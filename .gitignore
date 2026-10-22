@@ -1,0 +1,59 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local Android SDK and build configuration
+local.properties
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.navigation/
+captures/
+
+# NDK / CMake
+.externalNativeBuild/
+.cxx/
+
+# Generated APKs, App Bundles, and binaries
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+output-metadata.json
+
+# Archive files
+source-code.zip
+
+# Signing keys and sensitive credentials
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+google-services.json
+
+# Debugging, tests, and logs
+*.log
+test-results/
+reports/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary and editor swap files
+*.tmp
+*.swp
+*.bak
+*~
+
+# Environment files
+.env
+.env.*

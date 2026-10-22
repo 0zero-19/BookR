@@ -1,0 +1,175 @@
+<resources>
+    <string name="app_name">BookR</string>
+
+    <!-- Tabs -->
+    <string name="tab_all">Все книги</string>
+    <string name="tab_recent">Недавние</string>
+    <string name="tab_favorites">Избранное</string>
+
+    <!-- Library Actions -->
+    <string name="action_add_file">Открыть файл</string>
+    <string name="action_scan_folder">Сканировать папку</string>
+    <string name="action_sort">Сортировка</string>
+    <string name="search_hint">Поиск по названию или автору...</string>
+    <string name="search_reader_hint">Поиск по тексту книги...</string>
+
+    <!-- Sort Options -->
+    <string name="sort_title_asc">По названию (А–Я)</string>
+    <string name="sort_title_desc">По названию (Я–А)</string>
+    <string name="sort_author">По автору</string>
+    <string name="sort_recent">По последнему чтению</string>
+    <string name="sort_date_added">По дате добавления</string>
+
+    <!-- Empty States -->
+    <string name="empty_all_title">Библиотека пуста</string>
+    <string name="empty_all_desc">Добавьте FB2 или FB2.ZIP книги через кнопку добавления или отсканируйте папку</string>
+    <string name="empty_recent_title">Нет недавних книг</string>
+    <string name="empty_recent_desc">Здесь будут отображаться книги, которые вы недавно читали</string>
+    <string name="empty_fav_title">Нет избранных книг</string>
+    <string name="empty_fav_desc">Добавляйте понравившиеся книги в избранное в меню книги</string>
+    <string name="empty_search_title">Ничего не найдено</string>
+    <string name="empty_search_desc">Попробуйте изменить поисковый запрос</string>
+
+    <!-- Book Context Menu / Info -->
+    <string name="action_open">Читать</string>
+    <string name="action_add_fav">В избранное</string>
+    <string name="action_remove_fav">Убрать из избранного</string>
+    <string name="action_book_info">О книге</string>
+    <string name="action_delete_lib">Удалить из библиотеки</string>
+    <string name="delete_dialog_title">Удаление из библиотеки</string>
+    <string name="delete_dialog_msg">Книга будет удалена из списка библиотеки. Исходный файл на вашем устройстве останется нетронутым.</string>
+    <string name="btn_cancel">Отмена</string>
+    <string name="btn_delete">Удалить</string>
+    <string name="btn_close">Закрыть</string>
+
+    <!-- Reader -->
+    <string name="toc_title">Оглавление</string>
+    <string name="bookmarks_title">Закладки</string>
+    <string name="add_bookmark">Добавить закладку</string>
+    <string name="bookmark_added">Закладка сохранена</string>
+    <string name="no_bookmarks">У вас пока нет закладок в этой книге</string>
+    <string name="no_toc">Оглавление не найдено</string>
+    <string name="footnote_title">Сноска</string>
+
+    <!-- Reader Settings -->
+    <string name="settings_title">Параметры чтения</string>
+    <string name="setting_brightness">Яркость экрана</string>
+    <string name="setting_font_size">Размер шрифта</string>
+    <string name="setting_font_family">Шрифт</string>
+    <string name="font_serif">С засечками (Serif)</string>
+    <string name="font_sans">Без засечек (Sans)</string>
+    <string name="font_mono">Моноширинный (Mono)</string>
+
+    <string name="setting_line_spacing">Межстрочный интервал</string>
+    <string name="spacing_compact">Компактный</string>
+    <string name="spacing_normal">Обычный</string>
+    <string name="spacing_relaxed">Просторный</string>
+
+    <string name="setting_margins">Ширина полей</string>
+    <string name="margin_narrow">Узкие</string>
+    <string name="margin_normal">Обычные</string>
+    <string name="margin_wide">Широкие</string>
+
+    <string name="setting_alignment">Выравнивание</string>
+    <string name="align_justify">По ширине</string>
+    <string name="align_left">По левому краю</string>
+    <string name="align_center">По центру</string>
+
+    <string name="setting_theme">Цветовая схема</string>
+    <string name="theme_oled">OLED Чёрный</string>
+    <string name="theme_charcoal">Угольный</string>
+    <string name="theme_slate">Тёмно-серый</string>
+    <string name="theme_paper">Бумажный монохром</string>
+
+    <string name="setting_reading_mode">Режим чтения</string>
+    <string name="mode_paged">Постранично (касанием)</string>
+    <string name="mode_scroll">Непрерывная прокрутка</string>
+
+    <string name="loading_book">Загрузка книги...</string>
+    <string name="scanning_folders">Поиск книг...</string>
+    <string name="error_open_book">Не удалось открыть файл книги</string>
+
+    <!-- 8 Main Sections -->
+    <string name="nav_library">Библиотека</string>
+    <string name="nav_continue">Продолжить</string>
+    <string name="nav_bookmarks">Закладки</string>
+    <string name="nav_quotes">Цитаты</string>
+    <string name="nav_notes">Заметки</string>
+    <string name="nav_shelves">Коллекции</string>
+    <string name="nav_history">История</string>
+    <string name="nav_settings">Настройки</string>
+
+    <!-- Continue Reading -->
+    <string name="continue_reading_btn">Продолжить чтение</string>
+    <string name="empty_continue_title">Нет активных книг</string>
+    <string name="empty_continue_desc">Начните читать любую книгу из библиотеки, и она появится здесь с точным прогрессом</string>
+
+    <!-- Quotes & Notes -->
+    <string name="quotes_title">Цитаты и фрагменты</string>
+    <string name="empty_quotes_title">Нет сохранённых цитат</string>
+    <string name="empty_quotes_desc">Выделяйте фрагменты текста во время чтения и сохраняйте их в цитаты</string>
+    <string name="notes_title">Заметки</string>
+    <string name="empty_notes_title">Нет заметок</string>
+    <string name="empty_notes_desc">Создавайте мысли и заметки к прочитанным книгам или отдельным главам</string>
+    <string name="btn_new_note">Новая заметка</string>
+    <string name="export_notes">Экспорт в Markdown/TXT</string>
+    <string name="action_share">Поделиться</string>
+    <string name="action_copy">Скопировать</string>
+    <string name="action_edit">Редактировать</string>
+
+    <!-- Shelves / Collections -->
+    <string name="shelves_title">Коллекции и полки</string>
+    <string name="btn_new_shelf">Создать полку</string>
+    <string name="empty_shelves_title">Коллекций пока нет</string>
+    <string name="empty_shelves_desc">Создавайте полки для сортировки книг по жанрам, сериям или темам</string>
+    <string name="add_to_shelf">Добавить в коллекцию</string>
+
+    <!-- History & Stats -->
+    <string name="history_title">История и статистика</string>
+    <string name="stat_books_count">Книг в библиотеке</string>
+    <string name="stat_reading_time">Время чтения</string>
+    <string name="stat_completed">Прочитано книг</string>
+
+    <!-- Themes -->
+    <string name="theme_obsidian">Obsidian</string>
+    <string name="theme_graphite">Graphite</string>
+    <string name="theme_warm_gray">Warm Gray</string>
+    <string name="theme_oled_black">OLED Black</string>
+    <string name="theme_custom">Пользовательская</string>
+    <string name="btn_custom_theme_editor">Редактор темы оформления</string>
+    <string name="theme_editor_title">Кастомная тема</string>
+    <string name="theme_preview">Предпросмотр текста</string>
+    <string name="theme_save">Сохранить тему</string>
+    <string name="theme_reset">Сбросить по умолчанию</string>
+
+    <!-- Sleep Timer -->
+    <string name="sleep_timer">Таймер сна</string>
+    <string name="timer_off">Выключен</string>
+    <string name="timer_15">15 минут</string>
+    <string name="timer_30">30 минут</string>
+    <string name="timer_60">60 минут</string>
+    <string name="timer_active">Таймер сна активен: %d мин</string>
+
+    <!-- Folder Sources -->
+    <string name="folder_sources_title">Подключённые папки</string>
+    <string name="folder_accessible">Доступна</string>
+    <string name="folder_inaccessible">Доступ утерян (нажмите для восстановления)</string>
+    <string name="folder_rescan">Пересканировать</string>
+    <string name="folder_remove">Отключить папку</string>
+
+    <!-- Backup & Restore -->
+    <string name="backup_restore_title">Резервное копирование</string>
+    <string name="btn_backup_export">Экспорт в JSON</string>
+    <string name="btn_backup_import">Импорт из JSON</string>
+    <string name="backup_success">Резервная копия успешно создана</string>
+    <string name="restore_success">Данные успешно восстановлены</string>
+
+    <!-- Convenience -->
+    <string name="setting_volume_keys">Перелистывание кнопками громкости</string>
+    <string name="setting_fullscreen">Полноэкранный режим</string>
+    <string name="setting_orientation">Ориентация экрана</string>
+    <string name="orientation_auto">Автоповорот</string>
+    <string name="orientation_portrait">Портретная</string>
+    <string name="orientation_landscape">Альбомная</string>
+    <string name="setting_auto_scan">Авто-сканирование при запуске</string>
+</resources>
