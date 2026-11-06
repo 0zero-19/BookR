@@ -179,6 +179,20 @@ public class NetworkImageLoader {
     }
 
     public static boolean downloadUrlToFile(String urlStr, File destFile) {
+        boolean success = downloadUrlToFileInternal(urlStr, destFile);
+        if (!success && urlStr != null) {
+            if (urlStr.contains("img3.cdnlibs.org")) {
+                String fallback = urlStr.replace("img3.cdnlibs.org", "img2.imglib.info");
+                success = downloadUrlToFileInternal(fallback, destFile);
+            } else if (urlStr.contains("img2.imglib.info")) {
+                String fallback = urlStr.replace("img2.imglib.info", "img3.cdnlibs.org");
+                success = downloadUrlToFileInternal(fallback, destFile);
+            }
+        }
+        return success;
+    }
+
+    private static boolean downloadUrlToFileInternal(String urlStr, File destFile) {
         int redirects = 0;
         String currentUrl = urlStr;
         while (redirects < 5) {
@@ -189,7 +203,9 @@ public class NetworkImageLoader {
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(20000);
                 conn.setInstanceFollowRedirects(false);
-                conn.setRequestProperty("User-Agent", "BookR/2.0 (Android Monochrome Reader)");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+                conn.setRequestProperty("Referer", "https://mangalib.me/");
+                conn.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
                 int code = conn.getResponseCode();
                 if (code == HttpURLConnection.HTTP_MOVED_PERM
                         || code == HttpURLConnection.HTTP_MOVED_TEMP

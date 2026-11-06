@@ -15,10 +15,7 @@ import com.bookr.reader.parser.Fb2Metadata;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
+import org.xmlpull.v1.XmlPullParser;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -39,9 +36,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
 public class OnlineBookClient {
     public static final int TAB_RUSSIAN = 0;
     public static final int TAB_WORLD = 1;
@@ -53,12 +47,15 @@ public class OnlineBookClient {
 
     public interface BooksCallback {
         void onSuccess(List<OnlineBookItem> books, String sourceDescription);
+
         void onError(String message);
     }
 
     public interface DownloadCallback {
         void onProgress(String status);
+
         void onSuccess(BookItem localBook);
+
         void onError(String message);
     }
 
@@ -75,7 +72,7 @@ public class OnlineBookClient {
     }
 
     public void fetchBooks(final Context context, final int tab, final String query,
-                           final String opdsUrl, final BooksCallback callback) {
+            final String opdsUrl, final BooksCallback callback) {
         executor.execute(() -> {
             List<OnlineBookItem> result = new ArrayList<>();
             String sourceDesc = "Онлайн каталог";
@@ -97,7 +94,8 @@ public class OnlineBookClient {
                     }
                 } else if (tab == TAB_RUSSIAN) {
                     sourceDesc = "Бесплатная библиотека (RU + Gutenberg + OpenLibrary)";
-                    // 1. Add matching curated Russian classics first for instant high-quality FB2 reading
+                    // 1. Add matching curated Russian classics first for instant high-quality FB2
+                    // reading
                     result.addAll(filterBooksByQuery(getCuratedRussianBooks(), safeQuery));
 
                     // 2. Fetch live from Gutendex Russian catalog
@@ -155,7 +153,7 @@ public class OnlineBookClient {
                         for (BookItem lb : localBooks) {
                             if (onlineUuid.equals(lb.getUuid())
                                     || (online.getTitle().equalsIgnoreCase(lb.getTitle())
-                                    && online.getAuthor().equalsIgnoreCase(lb.getAuthor()))) {
+                                            && online.getAuthor().equalsIgnoreCase(lb.getAuthor()))) {
                                 online.setLocalBookId(lb.getId());
                                 online.setLocalFilePath(lb.getCachedPath());
                                 break;
@@ -181,7 +179,7 @@ public class OnlineBookClient {
     }
 
     public void downloadOrOpenBook(final Context context, final OnlineBookItem onlineBook,
-                                   final boolean permanentDownload, final DownloadCallback callback) {
+            final boolean permanentDownload, final DownloadCallback callback) {
         executor.execute(() -> {
             try {
                 BookRepository repo = new BookRepository(context);
@@ -196,7 +194,8 @@ public class OnlineBookClient {
                         onlineBook.setLocalBookId(existing.getId());
                         onlineBook.setLocalFilePath(f.getAbsolutePath());
                         mainHandler.post(() -> {
-                            if (callback != null) callback.onSuccess(existing);
+                            if (callback != null)
+                                callback.onSuccess(existing);
                         });
                         return;
                     }
@@ -211,7 +210,8 @@ public class OnlineBookClient {
                 });
 
                 File targetDir = new File(context.getFilesDir(), "online_books");
-                if (!targetDir.exists()) targetDir.mkdirs();
+                if (!targetDir.exists())
+                    targetDir.mkdirs();
 
                 String ext = ".fb2";
                 String fmt = onlineBook.getFormat().toUpperCase(Locale.ROOT);
@@ -237,7 +237,8 @@ public class OnlineBookClient {
 
                 // Save cover image locally
                 File coversDir = new File(context.getFilesDir(), "covers");
-                if (!coversDir.exists()) coversDir.mkdirs();
+                if (!coversDir.exists())
+                    coversDir.mkdirs();
                 File coverFile = new File(coversDir, "online_cov_" + safeId + ".jpg");
                 Bitmap coverBmp = NetworkImageLoader.getInstance(context)
                         .loadBitmapSync(onlineBook.getCoverUrl(), onlineBook.getTitle(), onlineBook.getAuthor());
@@ -256,10 +257,12 @@ public class OnlineBookClient {
                 try {
                     Fb2Metadata meta = BookParserManager.parseMetadata(context, fileUri);
                     if (meta != null) {
-                        if (meta.getTitle() != null && !meta.getTitle().isEmpty() && !"Без названия".equals(meta.getTitle())) {
+                        if (meta.getTitle() != null && !meta.getTitle().isEmpty()
+                                && !"Без названия".equals(meta.getTitle())) {
                             title = meta.getTitle();
                         }
-                        if (meta.getAuthor() != null && !meta.getAuthor().isEmpty() && !"Неизвестный автор".equals(meta.getAuthor())) {
+                        if (meta.getAuthor() != null && !meta.getAuthor().isEmpty()
+                                && !"Неизвестный автор".equals(meta.getAuthor())) {
                             author = meta.getAuthor();
                         }
                         if (meta.getAnnotation() != null && !meta.getAnnotation().isEmpty()) {
@@ -278,7 +281,7 @@ public class OnlineBookClient {
                 bookItem.setSeries(onlineBook.getSourceName());
                 bookItem.setFormat(destFile.getName().toUpperCase(Locale.ROOT).endsWith(".EPUB") ? "EPUB"
                         : destFile.getName().toUpperCase(Locale.ROOT).endsWith(".TXT") ? "TXT"
-                        : destFile.getName().toUpperCase(Locale.ROOT).endsWith(".PDF") ? "PDF" : "FB2");
+                                : destFile.getName().toUpperCase(Locale.ROOT).endsWith(".PDF") ? "PDF" : "FB2");
                 bookItem.setAnnotation(annotation);
                 if (coverFile.exists()) {
                     bookItem.setCoverPath(coverFile.getAbsolutePath());
@@ -291,11 +294,13 @@ public class OnlineBookClient {
                 onlineBook.setLocalFilePath(destFile.getAbsolutePath());
 
                 mainHandler.post(() -> {
-                    if (callback != null) callback.onSuccess(bookItem);
+                    if (callback != null)
+                        callback.onSuccess(bookItem);
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    if (callback != null) callback.onError("Ошибка загрузки: " + e.getMessage());
+                    if (callback != null)
+                        callback.onError("Ошибка загрузки: " + e.getMessage());
                 });
             }
         });
@@ -303,11 +308,13 @@ public class OnlineBookClient {
 
     public static List<OnlineBookItem> parseGutendexJson(String jsonStr) {
         List<OnlineBookItem> list = new ArrayList<>();
-        if (jsonStr == null || jsonStr.isEmpty()) return list;
+        if (jsonStr == null || jsonStr.isEmpty())
+            return list;
         try {
             JSONObject root = new JSONObject(jsonStr);
             JSONArray results = root.optJSONArray("results");
-            if (results == null) return list;
+            if (results == null)
+                return list;
 
             for (int i = 0; i < results.length(); i++) {
                 JSONObject obj = results.getJSONObject(i);
@@ -325,7 +332,8 @@ public class OnlineBookClient {
                             name = parts[1].trim() + " " + parts[0].trim();
                         }
                         if (!name.isEmpty()) {
-                            if (authorSb.length() > 0) authorSb.append(", ");
+                            if (authorSb.length() > 0)
+                                authorSb.append(", ");
                             authorSb.append(name);
                         }
                     }
@@ -336,7 +344,8 @@ public class OnlineBookClient {
                 JSONArray subjects = obj.optJSONArray("subjects");
                 if (subjects != null) {
                     for (int s = 0; s < Math.min(3, subjects.length()); s++) {
-                        if (genresSb.length() > 0) genresSb.append(" • ");
+                        if (genresSb.length() > 0)
+                            genresSb.append(" • ");
                         genresSb.append(subjects.optString(s));
                     }
                 }
@@ -393,8 +402,7 @@ public class OnlineBookClient {
                         lang,
                         "Gutenberg",
                         genresSb.toString(),
-                        downloads
-                );
+                        downloads);
                 list.add(item);
             }
         } catch (Exception ignored) {
@@ -404,11 +412,13 @@ public class OnlineBookClient {
 
     public static List<OnlineBookItem> parseOpenLibraryJson(String jsonStr) {
         List<OnlineBookItem> list = new ArrayList<>();
-        if (jsonStr == null || jsonStr.isEmpty()) return list;
+        if (jsonStr == null || jsonStr.isEmpty())
+            return list;
         try {
             JSONObject root = new JSONObject(jsonStr);
             JSONArray docs = root.optJSONArray("docs");
-            if (docs == null) return list;
+            if (docs == null)
+                return list;
 
             for (int i = 0; i < Math.min(25, docs.length()); i++) {
                 JSONObject doc = docs.getJSONObject(i);
@@ -451,8 +461,7 @@ public class OnlineBookClient {
                         "RU/EN",
                         "OpenLibrary",
                         "Каталог OpenLibrary",
-                        doc.optInt("edition_count", 10) * 45
-                );
+                        doc.optInt("edition_count", 10) * 45);
                 list.add(item);
             }
         } catch (Exception ignored) {
@@ -462,102 +471,124 @@ public class OnlineBookClient {
 
     public static List<OnlineBookItem> parseOpdsXml(String xmlContent, String baseUrl) {
         List<OnlineBookItem> list = new ArrayList<>();
-        if (xmlContent == null || xmlContent.trim().isEmpty()) return list;
+        if (xmlContent == null || xmlContent.trim().isEmpty())
+            return list;
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(false);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(new ByteArrayInputStream(xmlContent.getBytes(StandardCharsets.UTF_8)));
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
+            parser.setInput(new ByteArrayInputStream(xmlContent.getBytes(StandardCharsets.UTF_8)), "UTF-8");
 
-            NodeList entries = doc.getElementsByTagName("entry");
-            for (int i = 0; i < entries.getLength(); i++) {
-                Node node = entries.item(i);
-                if (node.getNodeType() != Node.ELEMENT_NODE) continue;
-                Element entry = (Element) node;
+            boolean inEntry = false;
+            boolean inAuthor = false;
+            String id = "";
+            String title = "";
+            String author = "";
+            String summary = "";
+            String coverUrl = null;
+            String downloadUrl = null;
+            String format = "FB2";
+            String currentTag = "";
 
-                String id = getChildText(entry, "id");
-                String title = getChildText(entry, "title");
-                if (title.isEmpty()) continue;
-
-                String author = "OPDS Каталог";
-                NodeList authorNodes = entry.getElementsByTagName("author");
-                if (authorNodes.getLength() > 0 && authorNodes.item(0).getNodeType() == Node.ELEMENT_NODE) {
-                    String name = getChildText((Element) authorNodes.item(0), "name");
-                    if (!name.isEmpty()) author = name;
-                }
-
-                String summary = getChildText(entry, "summary");
-                if (summary.isEmpty()) {
-                    summary = getChildText(entry, "content");
-                }
-                summary = summary.replaceAll("<[^>]+>", "").trim();
-
-                String coverUrl = null;
-                String downloadUrl = null;
-                String format = "FB2";
-
-                NodeList links = entry.getElementsByTagName("link");
-                for (int l = 0; l < links.getLength(); l++) {
-                    if (links.item(l).getNodeType() != Node.ELEMENT_NODE) continue;
-                    Element link = (Element) links.item(l);
-                    String rel = link.getAttribute("rel");
-                    String type = link.getAttribute("type");
-                    String href = link.getAttribute("href");
-                    if (href == null || href.isEmpty()) continue;
-
-                    String resolvedHref = resolveUrl(baseUrl, href);
-                    if (rel != null && rel.contains("image")) {
-                        coverUrl = resolvedHref;
-                    } else if (type != null) {
-                        String t = type.toLowerCase(Locale.ROOT);
-                        if (t.contains("fb2") || t.contains("fictionbook")) {
-                            downloadUrl = resolvedHref;
-                            format = "FB2";
-                        } else if (t.contains("epub") && downloadUrl == null) {
-                            downloadUrl = resolvedHref;
-                            format = "EPUB";
-                        } else if (t.contains("pdf") && downloadUrl == null) {
-                            downloadUrl = resolvedHref;
-                            format = "PDF";
-                        } else if (t.contains("text/plain") && downloadUrl == null) {
-                            downloadUrl = resolvedHref;
-                            format = "TXT";
+            int eventType = parser.getEventType();
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
+                    currentTag = parser.getName();
+                    if (currentTag.contains(":")) {
+                        currentTag = currentTag.substring(currentTag.indexOf(':') + 1);
+                    }
+                    if ("entry".equalsIgnoreCase(currentTag)) {
+                        inEntry = true;
+                        id = "";
+                        title = "";
+                        author = "";
+                        summary = "";
+                        coverUrl = null;
+                        downloadUrl = null;
+                        format = "FB2";
+                    } else if (inEntry && "author".equalsIgnoreCase(currentTag)) {
+                        inAuthor = true;
+                    } else if (inEntry && "link".equalsIgnoreCase(currentTag)) {
+                        String rel = parser.getAttributeValue(null, "rel");
+                        String type = parser.getAttributeValue(null, "type");
+                        String href = parser.getAttributeValue(null, "href");
+                        if (href != null && !href.isEmpty()) {
+                            String resolvedHref = resolveUrl(baseUrl, href);
+                            if (rel != null && rel.contains("image")) {
+                                coverUrl = resolvedHref;
+                            } else if (type != null) {
+                                String t = type.toLowerCase(Locale.ROOT);
+                                if (t.contains("fb2")) {
+                                    downloadUrl = resolvedHref;
+                                    format = "FB2";
+                                } else if (t.contains("epub") && downloadUrl == null) {
+                                    downloadUrl = resolvedHref;
+                                    format = "EPUB";
+                                } else if (t.contains("pdf") && downloadUrl == null) {
+                                    downloadUrl = resolvedHref;
+                                    format = "PDF";
+                                } else if (t.contains("text/plain") && downloadUrl == null) {
+                                    downloadUrl = resolvedHref;
+                                    format = "TXT";
+                                }
+                            }
                         }
                     }
+                } else if (eventType == XmlPullParser.TEXT) {
+                    if (inEntry) {
+                        String text = parser.getText();
+                        if (text != null && !text.trim().isEmpty()) {
+                            if (inAuthor && "name".equalsIgnoreCase(currentTag)) {
+                                author = text.trim();
+                            } else if (!inAuthor && "title".equalsIgnoreCase(currentTag)) {
+                                title = text.trim();
+                            } else if ("id".equalsIgnoreCase(currentTag)) {
+                                id = text.trim();
+                            } else if ("summary".equalsIgnoreCase(currentTag)
+                                    || "content".equalsIgnoreCase(currentTag)) {
+                                summary = text.trim().replaceAll("<[^>]+>", "");
+                            }
+                        }
+                    }
+                } else if (eventType == XmlPullParser.END_TAG) {
+                    String endTag = parser.getName();
+                    if (endTag.contains(":")) {
+                        endTag = endTag.substring(endTag.indexOf(':') + 1);
+                    }
+                    if ("author".equalsIgnoreCase(endTag)) {
+                        inAuthor = false;
+                    } else if ("entry".equalsIgnoreCase(endTag)) {
+                        inEntry = false;
+                        if (!title.isEmpty()) {
+                            String safeId = id.isEmpty() ? "opds_" + Math.abs(title.hashCode())
+                                    : "opds_" + Math.abs(id.hashCode());
+                            list.add(new OnlineBookItem(
+                                    safeId,
+                                    title,
+                                    author.isEmpty() ? "OPDS Каталог" : author,
+                                    summary.isEmpty() ? "Книга из OPDS-каталога" : summary,
+                                    coverUrl,
+                                    downloadUrl,
+                                    format,
+                                    "RU/EN",
+                                    "OPDS",
+                                    "OPDS Каталог",
+                                    250));
+                        }
+                    }
+                    currentTag = "";
                 }
-
-                String safeId = id.isEmpty() ? "opds_" + Math.abs(title.hashCode()) : "opds_" + Math.abs(id.hashCode());
-                list.add(new OnlineBookItem(
-                        safeId,
-                        title,
-                        author,
-                        summary.isEmpty() ? "Книга из OPDS-каталога" : summary,
-                        coverUrl,
-                        downloadUrl,
-                        format,
-                        "RU/EN",
-                        "OPDS",
-                        "OPDS Каталог",
-                        250
-                ));
+                eventType = parser.next();
             }
         } catch (Exception ignored) {
         }
         return list;
     }
 
-    private static String getChildText(Element parent, String tagName) {
-        NodeList nl = parent.getElementsByTagName(tagName);
-        if (nl.getLength() > 0 && nl.item(0) != null) {
-            String text = nl.item(0).getTextContent();
-            return text != null ? text.trim() : "";
-        }
-        return "";
-    }
-
     private static String resolveUrl(String baseUrl, String href) {
-        if (href == null) return null;
-        if (href.startsWith("http://") || href.startsWith("https://")) return href;
+        if (href == null)
+            return null;
+        if (href.startsWith("http://") || href.startsWith("https://"))
+            return href;
         try {
             URI base = new URI(baseUrl);
             return base.resolve(href).toString();
@@ -592,7 +623,8 @@ public class OnlineBookClient {
             }
         } catch (Exception ignored) {
         } finally {
-            if (conn != null) conn.disconnect();
+            if (conn != null)
+                conn.disconnect();
         }
         return null;
     }
@@ -613,7 +645,8 @@ public class OnlineBookClient {
     }
 
     private static List<OnlineBookItem> filterBooksByQuery(List<OnlineBookItem> books, String query) {
-        if (query == null || query.trim().isEmpty()) return new ArrayList<>(books);
+        if (query == null || query.trim().isEmpty())
+            return new ArrayList<>(books);
         String q = query.trim().toLowerCase(Locale.ROOT);
         List<OnlineBookItem> filtered = new ArrayList<>();
         for (OnlineBookItem b : books) {
@@ -642,7 +675,8 @@ public class OnlineBookClient {
         fb2.append("  <description>\n");
         fb2.append("    <title-info>\n");
         fb2.append("      <genre>prose_classic</genre>\n");
-        fb2.append("      <author><first-name>").append(author).append("</first-name><last-name></last-name></author>\n");
+        fb2.append("      <author><first-name>").append(author)
+                .append("</first-name><last-name></last-name></author>\n");
         fb2.append("      <book-title>").append(title).append("</book-title>\n");
         fb2.append("      <annotation><p>").append(desc).append("</p></annotation>\n");
         fb2.append("      <lang>").append(item.getLanguage().toLowerCase(Locale.ROOT)).append("</lang>\n");
@@ -665,7 +699,8 @@ public class OnlineBookClient {
         String desc = escapeXml(item.getDescription());
         return "    <section>\n"
                 + "      <title><p>Глава I. Пролог — " + title + "</p></title>\n"
-                + "      <p>Произведение: «" + title + "» (" + author + "). Источник: " + escapeXml(item.getSourceName()) + ".</p>\n"
+                + "      <p>Произведение: «" + title + "» (" + author + "). Источник: "
+                + escapeXml(item.getSourceName()) + ".</p>\n"
                 + "      <p>" + desc + "</p>\n"
                 + "      <p>В тот вечер воздух казался особенно прозрачным. Туман медленно опускался на гранитные набережные, а редкие фонари отражались в тёмной воде, словно зажжённые свечи в бесконечном зеркальном зале. Человек в длинном пальто остановился у парапета и раскрыл старую записную книжку.</p>\n"
                 + "      <p>Каждая страница хранила следы времени: заметки на полях, засушенные листья, обрывки писем и размышления о том, как одно-единственное решение способно изменить судьбу целого поколения.</p>\n"
@@ -686,7 +721,8 @@ public class OnlineBookClient {
     }
 
     private static String escapeXml(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         return s.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
@@ -708,28 +744,26 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Классика • Психологический роман • Философия",
-                48200
-        );
+                48200);
         b1.setFallbackContent(
                 "    <section>\n"
-                + "      <title><p>Часть первая. Глава I</p></title>\n"
-                + "      <p>В начале июля, в чрезвычайно жаркое время, под вечер, один молодой человек вышел из своей каморки, которую нанимал от жильцов в С — м переулке, на улицу и медленно, как бы в нерешимости, отправился к К — ну мосту.</p>\n"
-                + "      <p>Он благополучно избегнул встречи с своею хозяйкой на лестнице. Каморка его приходилась под самою кровлей высокого пятиэтажного дома и походила более на шкаф, чем на квартиру. Квартирная же хозяйка его, у которой он нанимал эту каморку с обедом и прислугой, помещалась одною лестницей ниже, в отдельной квартире, и каждый раз, при выходе на улицу, ему непременно надо было проходить мимо хозяйкиной кухни, почти всегда настежь отворенной на лестницу.</p>\n"
-                + "      <p>И каждый раз молодой человек, проходя мимо, чувствовал какое-то болезненное и трусливое ощущение, которого стыдился и от которого морщился. Он был должен кругом хозяйке и боялся с нею встретиться.</p>\n"
-                + "      <p>Не то чтоб он был так труслив и забит, совсем даже напротив; но с некоторого времени он был в раздражительном и напряженном состоянии, похожем на ипохондрию. Он до того углубился в себя и уединился от всех, что боялся даже всякой встречи, не только встречи с хозяйкой.</p>\n"
-                + "    </section>\n"
-                + "    <section>\n"
-                + "      <title><p>Часть первая. Глава II</p></title>\n"
-                + "      <p>На улице жара стояла страшная, к тому же духота, толкотня, всюду известка, леса, кирпич, пыль и та особенная летняя вонь, столь известная каждому петербуржцу, не имеющему возможности нанять дачу, — всё это разом неприятно потрясло и без того уже расстроенные нервы юноши.</p>\n"
-                + "      <p>Черты лица его были правильные, с тонкими губами и глубокими тёмными глазами. Но бледность и лихорадочный блеск взгляда выдавали внутреннюю бурю, которая не утихала в нём уже много недель.</p>\n"
-                + "      <p>«На какое дело хочу покуситься и в то же время каких пустяков боюсь! — подумал он с странною улыбкой. — Гм... да... всё в руках человека, и всё-то он мимо носу проносит, единственно от одной трусости... это уж аксиома... Любопытно, чего люди больше всего боятся? Нового шага, нового собственного слова они всего больше боятся...»</p>\n"
-                + "    </section>\n"
-                + "    <section>\n"
-                + "      <title><p>Часть первая. Глава III</p></title>\n"
-                + "      <p>Проснулся он на другой день поздно, после беспокойного сна, который не освежил его. Утренний луч пробивался сквозь пыльное стекло узкого окна. Настасья вошла с чаем и письмом от матери из губернии.</p>\n"
-                + "      <p>Дрожащими руками Раскольников сломал печать и стал читать длинное, полное материнской любви и тревоги послание Пульхерии Александровны. Каждая строчка обжигала его сердце болью и решимостью.</p>\n"
-                + "    </section>\n"
-        );
+                        + "      <title><p>Часть первая. Глава I</p></title>\n"
+                        + "      <p>В начале июля, в чрезвычайно жаркое время, под вечер, один молодой человек вышел из своей каморки, которую нанимал от жильцов в С — м переулке, на улицу и медленно, как бы в нерешимости, отправился к К — ну мосту.</p>\n"
+                        + "      <p>Он благополучно избегнул встречи с своею хозяйкой на лестнице. Каморка его приходилась под самою кровлей высокого пятиэтажного дома и походила более на шкаф, чем на квартиру. Квартирная же хозяйка его, у которой он нанимал эту каморку с обедом и прислугой, помещалась одною лестницей ниже, в отдельной квартире, и каждый раз, при выходе на улицу, ему непременно надо было проходить мимо хозяйкиной кухни, почти всегда настежь отворенной на лестницу.</p>\n"
+                        + "      <p>И каждый раз молодой человек, проходя мимо, чувствовал какое-то болезненное и трусливое ощущение, которого стыдился и от которого морщился. Он был должен кругом хозяйке и боялся с нею встретиться.</p>\n"
+                        + "      <p>Не то чтоб он был так труслив и забит, совсем даже напротив; но с некоторого времени он был в раздражительном и напряженном состоянии, похожем на ипохондрию. Он до того углубился в себя и уединился от всех, что боялся даже всякой встречи, не только встречи с хозяйкой.</p>\n"
+                        + "    </section>\n"
+                        + "    <section>\n"
+                        + "      <title><p>Часть первая. Глава II</p></title>\n"
+                        + "      <p>На улице жара стояла страшная, к тому же духота, толкотня, всюду известка, леса, кирпич, пыль и та особенная летняя вонь, столь известная каждому петербуржцу, не имеющему возможности нанять дачу, — всё это разом неприятно потрясло и без того уже расстроенные нервы юноши.</p>\n"
+                        + "      <p>Черты лица его были правильные, с тонкими губами и глубокими тёмными глазами. Но бледность и лихорадочный блеск взгляда выдавали внутреннюю бурю, которая не утихала в нём уже много недель.</p>\n"
+                        + "      <p>«На какое дело хочу покуситься и в то же время каких пустяков боюсь! — подумал он с странною улыбкой. — Гм... да... всё в руках человека, и всё-то он мимо носу проносит, единственно от одной трусости... это уж аксиома... Любопытно, чего люди больше всего боятся? Нового шага, нового собственного слова они всего больше боятся...»</p>\n"
+                        + "    </section>\n"
+                        + "    <section>\n"
+                        + "      <title><p>Часть первая. Глава III</p></title>\n"
+                        + "      <p>Проснулся он на другой день поздно, после беспокойного сна, который не освежил его. Утренний луч пробивался сквозь пыльное стекло узкого окна. Настасья вошла с чаем и письмом от матери из губернии.</p>\n"
+                        + "      <p>Дрожащими руками Раскольников сломал печать и стал читать длинное, полное материнской любви и тревоги послание Пульхерии Александровны. Каждая строчка обжигала его сердце болью и решимостью.</p>\n"
+                        + "    </section>\n");
         list.add(b1);
 
         OnlineBookItem b2 = new OnlineBookItem(
@@ -743,21 +777,19 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Мистика • Классика • Сатира • Философия",
-                64500
-        );
+                64500);
         b2.setFallbackContent(
                 "    <section>\n"
-                + "      <title><p>Глава 1. Никогда не разговаривайте с неизвестными</p></title>\n"
-                + "      <p>Однажды весною, в час небывало жаркого заката, в Москве, на Патриарших прудах, появились два гражданина. Первый из них, одетый в летнюю серенькую пару, был маленького роста, упитан, лыс, свою приличную шляпу пирожком нёс в руке, а на хорошо выбритом лице его помещались сверхъестественных размеров очки в чёрной роговой оправе. Второй — плечистый, рыжеватый, вихрастый молодой человек в заломленной на затылок клетчатой кепке — был в ковбойке, жёваных белых брюках и в чёрных тапочках.</p>\n"
-                + "      <p>Первый был не кто иной, как Михаил Александрович Берлиоз, председатель правления одной из крупнейших московских литературных ассоциаций, сокращённо именуемой МАССОЛИТ, и редактор толстого художественного журнала, а молодой спутник его — поэт Иван Николаевич Понырев, пишущий под псевдонимом Бездомный.</p>\n"
-                + "      <p>Попав в тень чуть зеленеющих лип, писатели первым долгом бросились к пёстро раскрашенной будочке с надписью «Пиво и воды». Да, следует отметить первую странность этого страшного майского вечера. Не только у будочки, но и во всей аллее, параллельной Малой Бронной улице, не оказалось ни одного человека.</p>\n"
-                + "    </section>\n"
-                + "    <section>\n"
-                + "      <title><p>Глава 2. Понтий Пилат</p></title>\n"
-                + "      <p>В белом плаще с кровавым подбоем, шаркающей кавалерийской походкой, ранним утром четырнадцатого числа весеннего месяца нисана в крытую колоннаду между двумя крыльями дворца Ирода Великого вышел прокуратор Иудеи Понтий Пилат.</p>\n"
-                + "      <p>Более всего на свете прокуратор ненавидел запах розового масла, и всё теперь предвещало нехороший день, так как запах этот начал преследовать прокуратора с рассвета.</p>\n"
-                + "    </section>\n"
-        );
+                        + "      <title><p>Глава 1. Никогда не разговаривайте с неизвестными</p></title>\n"
+                        + "      <p>Однажды весною, в час небывало жаркого заката, в Москве, на Патриарших прудах, появились два гражданина. Первый из них, одетый в летнюю серенькую пару, был маленького роста, упитан, лыс, свою приличную шляпу пирожком нёс в руке, а на хорошо выбритом лице его помещались сверхъестественных размеров очки в чёрной роговой оправе. Второй — плечистый, рыжеватый, вихрастый молодой человек в заломленной на затылок клетчатой кепке — был в ковбойке, жёваных белых брюках и в чёрных тапочках.</p>\n"
+                        + "      <p>Первый был не кто иной, как Михаил Александрович Берлиоз, председатель правления одной из крупнейших московских литературных ассоциаций, сокращённо именуемой МАССОЛИТ, и редактор толстого художественного журнала, а молодой спутник его — поэт Иван Николаевич Понырев, пишущий под псевдонимом Бездомный.</p>\n"
+                        + "      <p>Попав в тень чуть зеленеющих лип, писатели первым долгом бросились к пёстро раскрашенной будочке с надписью «Пиво и воды». Да, следует отметить первую странность этого страшного майского вечера. Не только у будочки, но и во всей аллее, параллельной Малой Бронной улице, не оказалось ни одного человека.</p>\n"
+                        + "    </section>\n"
+                        + "    <section>\n"
+                        + "      <title><p>Глава 2. Понтий Пилат</p></title>\n"
+                        + "      <p>В белом плаще с кровавым подбоем, шаркающей кавалерийской походкой, ранним утром четырнадцатого числа весеннего месяца нисана в крытую колоннаду между двумя крыльями дворца Ирода Великого вышел прокуратор Иудеи Понтий Пилат.</p>\n"
+                        + "      <p>Более всего на свете прокуратор ненавидел запах розового масла, и всё теперь предвещало нехороший день, так как запах этот начал преследовать прокуратора с рассвета.</p>\n"
+                        + "    </section>\n");
         list.add(b2);
 
         OnlineBookItem b3 = new OnlineBookItem(
@@ -771,20 +803,18 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Исторический роман • Русская классика",
-                39100
-        );
+                39100);
         b3.setFallbackContent(
                 "    <section>\n"
-                + "      <title><p>Глава I. Сержант гвардии</p></title>\n"
-                + "      <p>Отец мой Андрей Петрович Гринёв в молодости своей служил при графе Минихе и вышел в отставку премьер-майором в 17.. году. С тех пор жил он в своей Симбирской деревне, где и женился на девице Авдотье Васильевне Ю., дочери бедного тамошнего дворянина.</p>\n"
-                + "      <p>Нас было девять человек детей. Все мои братья и сёстры умерли во младенчестве. Матушка была ещё мною брюхата, как уже я был записан в Семёновский полк сержантом, по милости майора гвардии князя Б., близкого нашего родственника.</p>\n"
-                + "      <p>Когда исполнилось мне шестнадцать лет, батюшка сказал: «Прощай, Пётр. Служи верно, кому присягнёшь; слушайся начальников; за их ласкою не гоняйся; на службу не напрашивайся; от службы не отговаривайся; и помни пословицу: береги платье снову, а честь смолоду».</p>\n"
-                + "    </section>\n"
-                + "    <section>\n"
-                + "      <title><p>Глава II. Вожатый</p></title>\n"
-                + "      <p>Дорожные размышления мои были не очень приятны. Буран кружил по степи, засыпая кибитку снегом. Вдруг ямщик присмотрелся в белую мглу: на дороге показалась тёмная фигура человека, который спокойно указал нам путь к постоялому двору по одному лишь запаху дыма.</p>\n"
-                + "    </section>\n"
-        );
+                        + "      <title><p>Глава I. Сержант гвардии</p></title>\n"
+                        + "      <p>Отец мой Андрей Петрович Гринёв в молодости своей служил при графе Минихе и вышел в отставку премьер-майором в 17.. году. С тех пор жил он в своей Симбирской деревне, где и женился на девице Авдотье Васильевне Ю., дочери бедного тамошнего дворянина.</p>\n"
+                        + "      <p>Нас было девять человек детей. Все мои братья и сёстры умерли во младенчестве. Матушка была ещё мною брюхата, как уже я был записан в Семёновский полк сержантом, по милости майора гвардии князя Б., близкого нашего родственника.</p>\n"
+                        + "      <p>Когда исполнилось мне шестнадцать лет, батюшка сказал: «Прощай, Пётр. Служи верно, кому присягнёшь; слушайся начальников; за их ласкою не гоняйся; на службу не напрашивайся; от службы не отговаривайся; и помни пословицу: береги платье снову, а честь смолоду».</p>\n"
+                        + "    </section>\n"
+                        + "    <section>\n"
+                        + "      <title><p>Глава II. Вожатый</p></title>\n"
+                        + "      <p>Дорожные размышления мои были не очень приятны. Буран кружил по степи, засыпая кибитку снегом. Вдруг ямщик присмотрелся в белую мглу: на дороге показалась тёмная фигура человека, который спокойно указал нам путь к постоялому двору по одному лишь запаху дыма.</p>\n"
+                        + "    </section>\n");
         list.add(b3);
 
         OnlineBookItem b4 = new OnlineBookItem(
@@ -798,16 +828,14 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Психология • Романтизм • Классика",
-                42800
-        );
+                42800);
         b4.setFallbackContent(
                 "    <section>\n"
-                + "      <title><p>Предисловие и Часть I. Бэла</p></title>\n"
-                + "      <p>Во всякой книге предисловие есть первая и вместе с тем последняя вещь; оно или служит объяснением цели сочинения, или оправданием и ответом на критики. Герой Нашего Времени, милостивые государи мои, точно, портрет, но не одного человека: это портрет, составленный из пороков всего нашего поколения, в полном их развитии.</p>\n"
-                + "      <p>Я ехал на перекладных из Тифлиса. Вся поклажа моей тележки состояла из одного небольшого чемодана, который до половины был набит путевыми записками о Грузии. Большая часть из них, к счастию для вас, потеряна, а чемодан с остальными вещами, к счастию для меня, остался цел.</p>\n"
-                + "      <p>Уж солнце начинало прятаться за снеговой хребет, когда я въехал в Койшаурскую долину. Осетин-извозчик неутомимо погонял лошадей, чтоб успеть до ночи взобраться на Койшаурскую гору, и во всё горло распевал песни.</p>\n"
-                + "    </section>\n"
-        );
+                        + "      <title><p>Предисловие и Часть I. Бэла</p></title>\n"
+                        + "      <p>Во всякой книге предисловие есть первая и вместе с тем последняя вещь; оно или служит объяснением цели сочинения, или оправданием и ответом на критики. Герой Нашего Времени, милостивые государи мои, точно, портрет, но не одного человека: это портрет, составленный из пороков всего нашего поколения, в полном их развитии.</p>\n"
+                        + "      <p>Я ехал на перекладных из Тифлиса. Вся поклажа моей тележки состояла из одного небольшого чемодана, который до половины был набит путевыми записками о Грузии. Большая часть из них, к счастию для вас, потеряна, а чемодан с остальными вещами, к счастию для меня, остался цел.</p>\n"
+                        + "      <p>Уж солнце начинало прятаться за снеговой хребет, когда я въехал в Койшаурскую долину. Осетин-извозчик неутомимо погонял лошадей, чтоб успеть до ночи взобраться на Койшаурскую гору, и во всё горло распевал песни.</p>\n"
+                        + "    </section>\n");
         list.add(b4);
 
         OnlineBookItem b5 = new OnlineBookItem(
@@ -821,8 +849,7 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Рассказы • Повести • Классика",
-                35700
-        );
+                35700);
         list.add(b5);
 
         OnlineBookItem b6 = new OnlineBookItem(
@@ -836,8 +863,7 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Поэма в прозе • Сатира • Классика",
-                37900
-        );
+                37900);
         list.add(b6);
 
         OnlineBookItem b7 = new OnlineBookItem(
@@ -851,8 +877,7 @@ public class OnlineBookClient {
                 "RU",
                 "Классика RU",
                 "Роман-эпопея • История • Философия",
-                52300
-        );
+                52300);
         list.add(b7);
 
         OnlineBookItem b8 = new OnlineBookItem(
@@ -866,8 +891,7 @@ public class OnlineBookClient {
                 "RU",
                 "Фантастика RU",
                 "Научная фантастика • Приключения",
-                44100
-        );
+                44100);
         list.add(b8);
 
         return list;
@@ -887,8 +911,7 @@ public class OnlineBookClient {
                 "RU/EN",
                 "Мировая классика",
                 "Детектив • Классика • Тайна",
-                71200
-        ));
+                71200));
 
         list.add(new OnlineBookItem(
                 "world_kafka",
@@ -901,8 +924,7 @@ public class OnlineBookClient {
                 "RU/EN",
                 "Мировая классика",
                 "Модернизм • Философия • Притча",
-                54300
-        ));
+                54300));
 
         list.add(new OnlineBookItem(
                 "world_lovecraft",
@@ -915,8 +937,7 @@ public class OnlineBookClient {
                 "RU",
                 "Мировая классика",
                 "Мистика • Хоррор • Фантастика",
-                49800
-        ));
+                49800));
 
         list.add(new OnlineBookItem(
                 "world_verne",
@@ -929,8 +950,7 @@ public class OnlineBookClient {
                 "RU/EN",
                 "Мировая классика",
                 "Приключения • Научная фантастика",
-                46500
-        ));
+                46500));
 
         return list;
     }

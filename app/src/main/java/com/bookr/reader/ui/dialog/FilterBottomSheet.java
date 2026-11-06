@@ -147,3 +147,4 @@ public class FilterBottomSheet extends BottomSheetDialogFragment {
         return defaultText;
     }
 }
+

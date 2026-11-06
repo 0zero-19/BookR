@@ -391,4 +391,102 @@ public class Fb2ParserTest {
             }
         }
     }
+
+    @Test
+    public void testMangaLibJsonParsing() {
+        String mlCatalogJson = "{\n"
+                + "  \"data\": [\n"
+                + "    {\n"
+                + "      \"id\": 7965,\n"
+                + "      \"slug_url\": \"7965--chainsaw-man\",\n"
+                + "      \"rus_name\": \"Человек-бензопила\",\n"
+                + "      \"name\": \"Chainsaw Man\",\n"
+                + "      \"rating\": {\"average\": \"9.5\"},\n"
+                + "      \"status\": {\"label\": \"Завершён\"},\n"
+                + "      \"type\": {\"label\": \"Манга\"},\n"
+                + "      \"cover\": {\"default\": \"https://cover.imglib.info/uploads/cover/c.jpg\"}\n"
+                + "    }\n"
+                + "  ]\n"
+                + "}";
+        java.util.List<MangaItem> list = MangaApiClient.parseMangaLibListJson(mlCatalogJson);
+        Assert.assertEquals(1, list.size());
+        MangaItem item = list.get(0);
+        Assert.assertEquals("7965--chainsaw-man", item.getMangaId());
+        Assert.assertEquals("Человек-бензопила", item.getTitle());
+        Assert.assertEquals("https://cover.imglib.info/uploads/cover/c.jpg", item.getCoverUrl());
+        Assert.assertEquals("Завершён", item.getStatus());
+        Assert.assertTrue(item.getGenres().contains("★ 9.5"));
+
+        String mlChaptersJson = "{\n"
+                + "  \"data\": [\n"
+                + "    {\n"
+                + "      \"id\": 223269,\n"
+                + "      \"volume\": \"1\",\n"
+                + "      \"number\": \"1\",\n"
+                + "      \"name\": \"Пёс и бензопила\",\n"
+                + "      \"branches\": [\n"
+                + "        {\n"
+                + "          \"branch_id\": 4667,\n"
+                + "          \"teams\": [{\"name\": \"Team Naginata\"}]\n"
+                + "        }\n"
+                + "      ]\n"
+                + "    }\n"
+                + "  ]\n"
+                + "}";
+        java.util.List<MangaChapterItem> chs = MangaApiClient.parseMangaLibChaptersJson(mlChaptersJson, item.getMangaId());
+        Assert.assertEquals(1, chs.size());
+        MangaChapterItem ch = chs.get(0);
+        Assert.assertEquals("ml:223269:1:1:4667", ch.getChapterId());
+        Assert.assertEquals("1", ch.getChapterNumber());
+        Assert.assertEquals("1", ch.getVolumeNumber());
+        Assert.assertEquals("Пёс и бензопила", ch.getTitle());
+        Assert.assertEquals("Team Naginata", ch.getScanlationGroup());
+
+        String mlPagesJson = "{\n"
+                + "  \"data\": {\n"
+                + "    \"pages\": [\n"
+                + "      {\"id\": 1, \"url\": \"//manga/chainsaw-man/chapters/1-1/00.jpg\"},\n"
+                + "      {\"id\": 2, \"url\": \"//manga/chainsaw-man/chapters/1-1/01.jpg\"}\n"
+                + "    ]\n"
+                + "  }\n"
+                + "}";
+        java.util.List<String> pages = MangaApiClient.parseMangaLibPagesJson(mlPagesJson);
+        Assert.assertEquals(2, pages.size());
+        Assert.assertEquals("https://img3.cdnlibs.org/manga/chainsaw-man/chapters/1-1/00.jpg", pages.get(0));
+        Assert.assertEquals("https://img3.cdnlibs.org/manga/chainsaw-man/chapters/1-1/01.jpg", pages.get(1));
+    }
+
+    @Test
+    public void testRemangaJsonParsing() {
+        String remangaSearchJson = "{\n"
+                + "  \"results\": [\n"
+                + "    {\n"
+                + "      \"id\": 136,\n"
+                + "      \"main_name\": \"Ненасытный Берсерк\",\n"
+                + "      \"dir\": \"berserk_of_gluttony_\",\n"
+                + "      \"avg_rating\": \"8.1\",\n"
+                + "      \"type\": {\"name\": \"Манга\"},\n"
+                + "      \"status\": {\"name\": \"Продолжается\"},\n"
+                + "      \"cover\": {\"high\": \"/media/titles/berserk_of_gluttony/cover_df2b9127.webp\"}\n"
+                + "    }\n"
+                + "  ]\n"
+                + "}";
+        java.util.List<MangaItem> list = MangaApiClient.parseRemangaListJson(remangaSearchJson);
+        Assert.assertEquals(1, list.size());
+        MangaItem item = list.get(0);
+        Assert.assertEquals("remanga_berserk_of_gluttony_", item.getMangaId());
+        Assert.assertEquals("Ненасытный Берсерк", item.getTitle());
+        Assert.assertEquals("https://api.remanga.org/media/titles/berserk_of_gluttony/cover_df2b9127.webp", item.getCoverUrl());
+
+        String remangaPagesJson = "{\n"
+                + "  \"pages\": [\n"
+                + "    [{\"link\": \"https://img3.reimg2.org/images/136/5006/1_re.jpg\"}],\n"
+                + "    [{\"link\": \"https://img3.reimg2.org/images/136/5006/2_re.jpg\"}]\n"
+                + "  ]\n"
+                + "}";
+        java.util.List<String> pages = MangaApiClient.parseRemangaPagesJson(remangaPagesJson);
+        Assert.assertEquals(2, pages.size());
+        Assert.assertEquals("https://img3.reimg2.org/images/136/5006/1_re.jpg", pages.get(0));
+        Assert.assertEquals("https://img3.reimg2.org/images/136/5006/2_re.jpg", pages.get(1));
+    }
 }
