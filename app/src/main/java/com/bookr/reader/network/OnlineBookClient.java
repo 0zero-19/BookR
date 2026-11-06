@@ -215,10 +215,11 @@ public class OnlineBookClient {
 
                 String ext = ".fb2";
                 String fmt = onlineBook.getFormat().toUpperCase(Locale.ROOT);
-                if (fmt.contains("EPUB")) ext = ".epub";
-                else if (fmt.contains("PDF")) ext = ".pdf";
-                else if (fmt.contains("TXT")) ext = ".txt";
-                else if (fmt.contains("HTML")) ext = ".html";
+                String dlUrl = onlineBook.getDownloadUrl() != null ? onlineBook.getDownloadUrl().toLowerCase(Locale.ROOT) : "";
+                if (fmt.contains("EPUB") || dlUrl.contains(".epub")) ext = ".epub";
+                else if (fmt.contains("PDF") || dlUrl.contains(".pdf")) ext = ".pdf";
+                else if (fmt.contains("TXT") || dlUrl.contains(".txt")) ext = ".txt";
+                else if (fmt.contains("HTML") || dlUrl.contains(".html") || dlUrl.contains(".htm")) ext = ".html";
 
                 File destFile = new File(targetDir, "book_" + safeId + ext);
 
@@ -703,7 +704,7 @@ public class OnlineBookClient {
                 "Бессмертный социально-психологический и философский роман Ф. М. Достоевского о духовном потрясении, совести и искуплении Родиона Раскольникова в декорациях летнего Петербурга.",
                 "builtin://cover/prestuplenie",
                 "https://www.gutenberg.org/ebooks/2554.epub.noimages",
-                "FB2",
+                "EPUB",
                 "RU",
                 "Классика RU",
                 "Классика • Психологический роман • Философия",
@@ -882,7 +883,7 @@ public class OnlineBookClient {
                 "Классические детективные расследования знаменитого сыщика с Бейкер-стрит 221Б и его верного друга доктора Ватсона.",
                 "builtin://cover/sherlock",
                 "https://www.gutenberg.org/ebooks/1661.epub.noimages",
-                "FB2",
+                "EPUB",
                 "RU/EN",
                 "Мировая классика",
                 "Детектив • Классика • Тайна",
@@ -896,7 +897,7 @@ public class OnlineBookClient {
                 "Философско-гротескная проза Франца Кафки о человеке перед лицом абсурдного и непостижимого мира.",
                 "builtin://cover/kafka",
                 "https://www.gutenberg.org/ebooks/5200.epub.noimages",
-                "FB2",
+                "EPUB",
                 "RU/EN",
                 "Мировая классика",
                 "Модернизм • Философия • Притча",
@@ -924,7 +925,7 @@ public class OnlineBookClient {
                 "Невероятное кругосветное путешествие на борту подводного корабля «Наутилус» вместе с таинственным капитаном Немо.",
                 "builtin://cover/verne",
                 "https://www.gutenberg.org/ebooks/164.epub.noimages",
-                "FB2",
+                "EPUB",
                 "RU/EN",
                 "Мировая классика",
                 "Приключения • Научная фантастика",

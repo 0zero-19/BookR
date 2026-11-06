@@ -179,32 +179,52 @@ public class NetworkImageLoader {
     }
 
     public static boolean downloadUrlToFile(String urlStr, File destFile) {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(urlStr);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setInstanceFollowRedirects(true);
-            conn.setRequestProperty("User-Agent", "BookR/2.0 (Android Monochrome Reader)");
-            int code = conn.getResponseCode();
-            if (code >= 200 && code < 300) {
-                File parent = destFile.getParentFile();
-                if (parent != null && !parent.exists()) parent.mkdirs();
-                try (InputStream in = conn.getInputStream();
-                     FileOutputStream out = new FileOutputStream(destFile)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) != -1) {
-                        out.write(buf, 0, n);
+        int redirects = 0;
+        String currentUrl = urlStr;
+        while (redirects < 5) {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(currentUrl);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(20000);
+                conn.setInstanceFollowRedirects(false);
+                conn.setRequestProperty("User-Agent", "BookR/2.0 (Android Monochrome Reader)");
+                int code = conn.getResponseCode();
+                if (code == HttpURLConnection.HTTP_MOVED_PERM
+                        || code == HttpURLConnection.HTTP_MOVED_TEMP
+                        || code == HttpURLConnection.HTTP_SEE_OTHER
+                        || code == 307 || code == 308) {
+                    String loc = conn.getHeaderField("Location");
+                    if (loc != null && !loc.isEmpty()) {
+                        if (!loc.startsWith("http://") && !loc.startsWith("https://")) {
+                            loc = new URL(url, loc).toString();
+                        }
+                        currentUrl = loc;
+                        redirects++;
+                        continue;
                     }
-                    out.flush();
                 }
-                return destFile.exists() && destFile.length() > 0;
+                if (code >= 200 && code < 300) {
+                    File parent = destFile.getParentFile();
+                    if (parent != null && !parent.exists()) parent.mkdirs();
+                    try (InputStream in = conn.getInputStream();
+                         FileOutputStream out = new FileOutputStream(destFile)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) != -1) {
+                            out.write(buf, 0, n);
+                        }
+                        out.flush();
+                    }
+                    return destFile.exists() && destFile.length() > 0;
+                }
+                return false;
+            } catch (Exception e) {
+                return false;
+            } finally {
+                if (conn != null) conn.disconnect();
             }
-        } catch (Exception ignored) {
-        } finally {
-            if (conn != null) conn.disconnect();
         }
         return false;
     }
@@ -297,140 +317,147 @@ public class NetworkImageLoader {
         Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bmp);
 
-        // Crisp paper background
-        canvas.drawColor(Color.rgb(246, 246, 244));
+        // Minimalist deep dark canvas
+        canvas.drawColor(Color.rgb(13, 13, 17));
 
-        Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        borderPaint.setColor(Color.rgb(20, 20, 20));
-        borderPaint.setStyle(Paint.Style.STROKE);
-        borderPaint.setStrokeWidth(6f);
+        // Subtle gradient underlay
+        Paint gradPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        gradPaint.setShader(new android.graphics.LinearGradient(
+                0, 0, 0, height,
+                Color.rgb(18, 18, 24),
+                Color.rgb(9, 9, 12),
+                android.graphics.Shader.TileMode.CLAMP
+        ));
+        canvas.drawRect(0, 0, width, height, gradPaint);
 
-        Paint fillDark = new Paint(Paint.ANTI_ALIAS_FLAG);
-        fillDark.setColor(Color.rgb(28, 28, 32));
-        fillDark.setStyle(Paint.Style.FILL);
+        // Thin outer glass border
+        Paint framePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        framePaint.setStyle(Paint.Style.STROKE);
+        framePaint.setColor(Color.argb(32, 255, 255, 255));
+        framePaint.setStrokeWidth(2f);
+        RectF outerFrame = new RectF(40, 40, width - 40, height - 40);
+        canvas.drawRoundRect(outerFrame, 28f, 28f, framePaint);
 
-        Paint fillTone = new Paint(Paint.ANTI_ALIAS_FLAG);
-        fillTone.setColor(Color.rgb(215, 215, 212));
-        fillTone.setStyle(Paint.Style.FILL);
+        // Corner accents
+        framePaint.setColor(Color.argb(80, 255, 255, 255));
+        framePaint.setStrokeWidth(3f);
+        float accLen = 32f;
+        canvas.drawLine(40, 40 + accLen, 40, 40, framePaint);
+        canvas.drawLine(40, 40, 40 + accLen, 40, framePaint);
+        canvas.drawLine(width - 40 - accLen, 40, width - 40, 40, framePaint);
+        canvas.drawLine(width - 40, 40, width - 40, 40 + accLen, framePaint);
+        canvas.drawLine(40, height - 40 - accLen, 40, height - 40, framePaint);
+        canvas.drawLine(40, height - 40, 40 + accLen, height - 40, framePaint);
+        canvas.drawLine(width - 40 - accLen, height - 40, width - 40, height - 40, framePaint);
+        canvas.drawLine(width - 40, height - 40 - accLen, width - 40, height - 40, framePaint);
 
-        // Header strip
-        Paint headerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        headerPaint.setColor(Color.rgb(90, 90, 90));
-        headerPaint.setTextSize(20f);
-        headerPaint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
-        String safeManga = mangaTitle != null ? mangaTitle : "MANGA";
-        String safeChap = chapterTitle != null ? chapterTitle : "Глава 1";
-        canvas.drawText(safeManga + "  •  " + safeChap, 42f, 36f, headerPaint);
+        // Center Minimalist Glass Card
+        float cardLeft = 90f;
+        float cardRight = width - 90f;
+        float cardTop = height * 0.26f;
+        float cardBottom = height * 0.74f;
+        RectF glassCard = new RectF(cardLeft, cardTop, cardRight, cardBottom);
 
-        // Panel 1 (Top Wide Action/Establishing Panel)
-        RectF panel1 = new RectF(40, 52, width - 40, 440);
-        canvas.drawRect(panel1, fillTone);
-        canvas.drawRect(panel1, borderPaint);
+        Paint glassFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        glassFill.setStyle(Paint.Style.FILL);
+        glassFill.setColor(Color.argb(16, 255, 255, 255));
+        canvas.drawRoundRect(glassCard, 32f, 32f, glassFill);
 
-        // Speed lines in Panel 1
-        Paint speedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        speedPaint.setColor(Color.argb(70, 20, 20, 20));
-        speedPaint.setStrokeWidth(2f);
-        int seed = Math.abs((safeManga + pageNum).hashCode());
-        for (int i = 0; i < 36; i++) {
-            float sx = 40 + ((i * 29 + seed) % (width - 80));
-            canvas.drawLine(sx, 52, width / 2f, 260, speedPaint);
-        }
+        Paint glassBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        glassBorder.setStyle(Paint.Style.STROKE);
+        glassBorder.setStrokeWidth(1.5f);
+        glassBorder.setColor(Color.argb(40, 255, 255, 255));
+        canvas.drawRoundRect(glassCard, 32f, 32f, glassBorder);
 
-        // Dramatic silhouette in Panel 1
-        canvas.drawCircle(width * 0.35f, 230f, 75f, fillDark);
-        Path cloak = new Path();
-        cloak.moveTo(width * 0.22f, 440f);
-        cloak.lineTo(width * 0.35f, 280f);
-        cloak.lineTo(width * 0.50f, 440f);
-        cloak.close();
-        canvas.drawPath(cloak, fillDark);
+        float cx = width / 2f;
+        float ringCy = cardTop + 140f;
 
-        // Speech Bubble in Panel 1
-        RectF bubble1 = new RectF(width * 0.52f, 88f, width - 68f, 260f);
-        Paint bubbleFill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        bubbleFill.setColor(Color.WHITE);
-        canvas.drawRoundRect(bubble1, 48f, 48f, bubbleFill);
-        borderPaint.setStrokeWidth(3.5f);
-        canvas.drawRoundRect(bubble1, 48f, 48f, borderPaint);
+        // Elegant loading ring
+        Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        ringPaint.setStyle(Paint.Style.STROKE);
+        ringPaint.setStrokeWidth(3.5f);
+        ringPaint.setColor(Color.argb(45, 255, 255, 255));
+        canvas.drawCircle(cx, ringCy, 50f, ringPaint);
 
-        Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        textPaint.setColor(Color.rgb(18, 18, 18));
-        textPaint.setTextSize(23f);
-        textPaint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
-        textPaint.setTextAlign(Paint.Align.CENTER);
+        ringPaint.setColor(Color.WHITE);
+        ringPaint.setStrokeWidth(4f);
+        RectF ringRect = new RectF(cx - 50f, ringCy - 50f, cx + 50f, ringCy + 50f);
+        int angleOffset = (pageNum * 47) % 360;
+        canvas.drawArc(ringRect, angleOffset, 110f, false, ringPaint);
 
-        String[] dialogues1 = new String[]{
-                "Мы наконец дошли\nдо врат старого\nгорода...",
-                "Ты чувствуешь этот\nстранный резонанс\nв воздухе?!",
-                "Не отступать!\nЭтот бой решит\nисход всей главы!",
-                "Тень движется быстрее,\nчем мы предполагали..."
-        };
-        drawMultilineText(canvas, dialogues1[pageNum % dialogues1.length], bubble1.centerX(), bubble1.top + 56f, textPaint, 30f);
+        // Center dot
+        Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        dotPaint.setStyle(Paint.Style.FILL);
+        dotPaint.setColor(Color.argb(160, 255, 255, 255));
+        canvas.drawCircle(cx, ringCy, 6f, dotPaint);
 
-        // Panel 2 (Middle Left) & Panel 3 (Middle Right)
-        borderPaint.setStrokeWidth(6f);
-        RectF panel2 = new RectF(40, 464, width * 0.48f, 880);
-        RectF panel3 = new RectF(width * 0.50f, 464, width - 40, 880);
-        canvas.drawRect(panel2, fillDark);
-        canvas.drawRect(panel2, borderPaint);
-        canvas.drawRect(panel3, bubbleFill);
-        canvas.drawRect(panel3, borderPaint);
+        // Delicate page indicator
+        Paint pagePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pagePaint.setColor(Color.argb(220, 255, 255, 255));
+        pagePaint.setTextSize(20f);
+        pagePaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        pagePaint.setTextAlign(Paint.Align.CENTER);
+        int total = Math.max(pageNum, totalPages);
+        canvas.drawText("С Т Р А Н И Ц А   " + pageNum + "   /   " + total, cx, ringCy + 96f, pagePaint);
 
-        // Contrast eyes/glow in dark Panel 2
-        Paint whiteInk = new Paint(Paint.ANTI_ALIAS_FLAG);
-        whiteInk.setColor(Color.WHITE);
-        canvas.drawCircle(panel2.centerX() - 35f, panel2.centerY() - 20f, 12f, whiteInk);
-        canvas.drawCircle(panel2.centerX() + 35f, panel2.centerY() - 20f, 12f, whiteInk);
-        whiteInk.setTextSize(34f);
-        whiteInk.setTypeface(Typeface.create(Typeface.SERIF, Typeface.BOLD_ITALIC));
-        whiteInk.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText("ВЖУХ!!", panel2.centerX(), panel2.bottom - 50f, whiteInk);
+        // Manga Title
+        Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        titlePaint.setColor(Color.WHITE);
+        titlePaint.setTextSize(28f);
+        titlePaint.setTypeface(Typeface.create(Typeface.SERIF, Typeface.BOLD));
+        titlePaint.setTextAlign(Paint.Align.CENTER);
+        String safeManga = (mangaTitle != null && !mangaTitle.isEmpty()) ? mangaTitle : "Манга";
+        if (safeManga.length() > 32) safeManga = safeManga.substring(0, 30) + "…";
+        canvas.drawText(safeManga, cx, ringCy + 154f, titlePaint);
 
-        // Panel 3 geometry & dialogue
-        for (int r = 20; r < 160; r += 25) {
-            speedPaint.setStyle(Paint.Style.STROKE);
-            canvas.drawCircle(panel3.centerX(), panel3.centerY() + 40f, r, speedPaint);
-        }
-        RectF bubble2 = new RectF(panel3.left + 24f, panel3.top + 24f, panel3.right - 24f, panel3.top + 170f);
-        canvas.drawRoundRect(bubble2, 36f, 36f, bubbleFill);
-        borderPaint.setStrokeWidth(3f);
-        canvas.drawRoundRect(bubble2, 36f, 36f, borderPaint);
-        String[] dialogues2 = new String[]{
-                "Стр. " + pageNum + ": Секретная\nтехника активирована!",
-                "Невероятно!\nУровень силы растёт!",
-                "Нам нужно открыть\nдревний свиток.",
-                "Смотри внимательно\nна знаки!"
-        };
-        drawMultilineText(canvas, dialogues2[(pageNum + 1) % dialogues2.length], bubble2.centerX(), bubble2.top + 48f, textPaint, 28f);
+        // Chapter title
+        Paint chapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        chapPaint.setColor(Color.argb(180, 160, 160, 168));
+        chapPaint.setTextSize(20f);
+        chapPaint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL));
+        chapPaint.setTextAlign(Paint.Align.CENTER);
+        String safeChap = (chapterTitle != null && !chapterTitle.isEmpty()) ? chapterTitle : "Глава 1";
+        if (safeChap.length() > 36) safeChap = safeChap.substring(0, 34) + "…";
+        canvas.drawText(safeChap, cx, ringCy + 196f, chapPaint);
 
-        // Panel 4 (Bottom Wide Cinematic Panel)
-        borderPaint.setStrokeWidth(6f);
-        RectF panel4 = new RectF(40, 904, width - 40, height - 64);
-        canvas.drawRect(panel4, fillTone);
-        canvas.drawRect(panel4, borderPaint);
+        // Progress line track
+        float progY = ringCy + 250f;
+        float progWidth = (cardRight - cardLeft) * 0.65f;
+        float progStartX = cx - progWidth / 2f;
+        float progEndX = cx + progWidth / 2f;
 
-        // Horizon & cityscape in Panel 4
-        canvas.drawRect(40, 1140, width - 40, height - 64, fillDark);
-        for (int b = 60; b < width - 80; b += 75) {
-            int bh = 980 + ((b * 17 + pageNum * 31) % 150);
-            canvas.drawRect(b, bh, b + 52, 1140, fillDark);
-        }
+        Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        trackPaint.setStyle(Paint.Style.STROKE);
+        trackPaint.setStrokeWidth(3f);
+        trackPaint.setStrokeCap(Paint.Cap.ROUND);
+        trackPaint.setColor(Color.argb(35, 255, 255, 255));
+        canvas.drawLine(progStartX, progY, progEndX, progY, trackPaint);
 
-        RectF captionBox = new RectF(68, 932, 480, 1045);
-        canvas.drawRect(captionBox, bubbleFill);
-        borderPaint.setStrokeWidth(3f);
-        canvas.drawRect(captionBox, borderPaint);
-        drawMultilineText(canvas, safeChap + " • Эпизод " + pageNum + "\nПродолжение на след. странице →",
-                captionBox.centerX(), captionBox.top + 45f, textPaint, 28f);
+        // Progress line active
+        float fraction = total > 0 ? ((float) pageNum / (float) total) : 0f;
+        float activeEndX = progStartX + (progWidth * Math.min(1f, Math.max(0.08f, fraction)));
+        Paint activePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        activePaint.setStyle(Paint.Style.STROKE);
+        activePaint.setStrokeWidth(3.5f);
+        activePaint.setStrokeCap(Paint.Cap.ROUND);
+        activePaint.setColor(Color.WHITE);
+        canvas.drawLine(progStartX, progY, activeEndX, progY, activePaint);
 
-        // Footer Page Counter
+        // Loading subtitle
+        Paint loadSubPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        loadSubPaint.setColor(Color.argb(130, 255, 255, 255));
+        loadSubPaint.setTextSize(15f);
+        loadSubPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL));
+        loadSubPaint.setTextAlign(Paint.Align.CENTER);
+        canvas.drawText("З А Г Р У З К А   С Т Р А Н И Ц Ы . . .", cx, progY + 44f, loadSubPaint);
+
+        // Minimalist footer branding
         Paint footerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        footerPaint.setColor(Color.rgb(60, 60, 60));
-        footerPaint.setTextSize(22f);
+        footerPaint.setColor(Color.argb(80, 255, 255, 255));
+        footerPaint.setTextSize(14f);
+        footerPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL));
         footerPaint.setTextAlign(Paint.Align.CENTER);
-        footerPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
-        canvas.drawText("— " + pageNum + " / " + Math.max(pageNum, totalPages) + " —", width / 2f, height - 22f, footerPaint);
+        canvas.drawText("BOOKR • МИНИМАЛИЗМ • МОНОХРОМ", cx, height - 72f, footerPaint);
 
         return bmp;
     }

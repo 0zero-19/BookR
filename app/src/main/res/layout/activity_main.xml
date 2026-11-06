@@ -337,7 +337,36 @@
             android:src="@drawable/ic_close"
             android:visibility="gone"
             app:tint="@color/text_muted" />
+
+        <ImageView
+            android:id="@+id/btnFilterSearch"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="3dp"
+            android:src="@drawable/ic_filter"
+            android:contentDescription="@string/btn_filter"
+            app:tint="@color/text_muted" />
     </LinearLayout>
+
+    <!-- Active Filter Chips Banner (visible when any filter is active) -->
+    <HorizontalScrollView
+        android:id="@+id/filterChipsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:paddingHorizontal="16dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/searchContainer">
+
+        <LinearLayout
+            android:id="@+id/filterChipsContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
 
     <!-- Sub-tabs Container (for Library filters or action buttons) -->
     <LinearLayout
@@ -347,7 +376,7 @@
         android:layout_marginTop="8dp"
         android:orientation="horizontal"
         android:paddingHorizontal="16dp"
-        app:layout_constraintTop_toBottomOf="@id/searchContainer">
+        app:layout_constraintTop_toBottomOf="@id/filterChipsScroll">
 
         <TextView
             android:id="@+id/tabAll"

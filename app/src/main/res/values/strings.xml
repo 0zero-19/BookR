@@ -118,14 +118,33 @@
     <string name="action_copy">Скопировать</string>
     <string name="action_edit">Редактировать</string>
 
-    <!-- Shelves / Collections -->
-    <string name="shelves_title">Коллекции и полки</string>
-    <string name="btn_new_shelf">Создать полку</string>
-    <string name="create_shelf">Создать полку</string>
-    <string name="shelf_name_hint">Название полки (например, Фантастика)</string>
+    <!-- Collections / Shelves -->
+    <string name="shelves_title">Коллекции</string>
+    <string name="btn_new_shelf">Создать коллекцию</string>
+    <string name="create_shelf">Создать коллекцию</string>
+    <string name="shelf_name_hint">Название коллекции (например, Любимое)</string>
     <string name="empty_shelves_title">Коллекций пока нет</string>
-    <string name="empty_shelves_desc">Создавайте полки для сортировки книг по жанрам, сериям или темам</string>
+    <string name="empty_shelves_desc">Создавайте коллекции для сортировки книг и манги по темам, сериям или настроению</string>
     <string name="add_to_shelf">Добавить в коллекцию</string>
+    <string name="collection_reading">Читаю сейчас</string>
+    <string name="collection_completed">Прочитано</string>
+    <string name="collection_planned">В планах</string>
+    <string name="collection_custom">Мои коллекции</string>
+    <string name="tab_collection_reading">Читаю</string>
+    <string name="tab_collection_completed">Прочитано</string>
+    <string name="tab_collection_custom">Кастомные</string>
+
+    <!-- Filters Dialog -->
+    <string name="filter_title">Поиск по фильтрам</string>
+    <string name="filter_genre">Жанр / Категория</string>
+    <string name="filter_format">Формат книги</string>
+    <string name="filter_status">Статус манги</string>
+    <string name="filter_language">Язык</string>
+    <string name="filter_sort">Сортировка</string>
+    <string name="filter_all">Все</string>
+    <string name="filter_apply">Применить фильтры</string>
+    <string name="filter_reset">Сбросить</string>
+    <string name="btn_filter">Фильтры</string>
 
     <!-- History & Stats -->
     <string name="history_title">История и статистика</string>

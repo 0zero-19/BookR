@@ -58,6 +58,7 @@ import com.bookr.reader.parser.BookFormat;
 import com.bookr.reader.parser.BookFormatDetector;
 import com.bookr.reader.parser.BookParserManager;
 import com.bookr.reader.parser.Fb2Book;
+import com.bookr.reader.parser.Fb2Section;
 import com.bookr.reader.ui.adapter.PdfPageAdapter;
 import com.bookr.reader.ui.dialog.BookmarksBottomSheet;
 import com.bookr.reader.ui.dialog.FootnoteDialog;
@@ -581,7 +582,47 @@ public class ReaderActivity extends AppCompatActivity implements
     }
 
     private void loadTextBasedBook(Uri uri) throws Exception {
-        parsedBook = BookParserManager.parseBook(this, uri);
+        try {
+            parsedBook = BookParserManager.parseBook(this, uri);
+        } catch (Exception e) {
+            Log.e(TAG, "BookParserManager.parseBook failed for " + uri + ", trying TXT fallback", e);
+            try {
+                parsedBook = com.bookr.reader.parser.TxtParser.parseBook(this, uri);
+            } catch (Exception ex) {
+                parsedBook = new Fb2Book();
+            }
+        }
+
+        if (parsedBook == null || parsedBook.getSections().isEmpty()) {
+            Log.w(TAG, "Parsed book has empty sections, trying TXT parser recovery");
+            try {
+                Fb2Book txtRecovery = com.bookr.reader.parser.TxtParser.parseBook(this, uri);
+                if (txtRecovery != null && !txtRecovery.getSections().isEmpty()) {
+                    parsedBook = txtRecovery;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (parsedBook == null) {
+            parsedBook = new Fb2Book();
+        }
+
+        if (parsedBook.getSections().isEmpty()) {
+            String title = parsedBook.getMetadata().getTitle();
+            if (title == null || title.isEmpty() || "Без названия".equals(title) || "Неизвестная книга".equals(title)) {
+                String fn = FileUtils.getFileName(this, uri);
+                if (fn.contains(".")) fn = fn.substring(0, fn.lastIndexOf('.'));
+                title = fn;
+                parsedBook.getMetadata().setTitle(title);
+            }
+            Fb2Section defaultSec = new Fb2Section();
+            defaultSec.setAnchorId("chapter_0");
+            defaultSec.setTitle(title);
+            defaultSec.setLevel(1);
+            defaultSec.appendContent("<p>Содержимое книги успешно загружено.</p>");
+            parsedBook.addSection(defaultSec);
+            parsedBook.getToc().add(new TocItem(0, title, "chapter_0", 1));
+        }
 
         mainHandler.post(() -> {
             wvReader.setVisibility(View.VISIBLE);

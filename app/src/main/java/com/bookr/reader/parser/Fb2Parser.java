@@ -14,6 +14,7 @@ import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -27,6 +28,8 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -329,10 +332,11 @@ public class Fb2Parser {
                         } else if (currentSection != null) {
                             currentSection.appendContent("<p>" + paragraphContent + "</p>");
                         } else {
-                            if (book.getSections().isEmpty()) {
+                            if (currentSection == null) {
                                 Fb2Section defaultSec = new Fb2Section();
                                 defaultSec.setAnchorId("chapter_" + (sectionCounter++));
                                 defaultSec.setLevel(1);
+                                defaultSec.setTitle("Глава " + sectionCounter);
                                 book.addSection(defaultSec);
                                 sectionStack.push(defaultSec);
                                 currentSection = defaultSec;
@@ -468,6 +472,15 @@ public class Fb2Parser {
             }
         }
 
+        try {
+            rawStream.close();
+        } catch (Exception ignored) {}
+
+        if (book.getSections().isEmpty()) {
+            Log.w(TAG, "No sections parsed via XML parser, running fallbackParse");
+            fallbackParse(context, uri, book);
+        }
+
         // Fallback TOC if no explicit title tags were defined
         if (book.getToc().isEmpty() && !book.getSections().isEmpty()) {
             int idx = 0;
@@ -479,9 +492,58 @@ public class Fb2Parser {
             }
         }
 
-        rawStream.close();
         Log.d(TAG, "Successfully parsed FB2 book: " + book.getMetadata().getTitle() + " (" + book.getSections().size() + " sections)");
         return book;
+    }
+
+    private static void fallbackParse(Context context, Uri uri, Fb2Book book) {
+        try (InputStream is = openBookStream(context, uri)) {
+            if (is == null) return;
+            BufferedInputStream bis = new BufferedInputStream(is, 64 * 1024);
+            Charset cs = EncodingDetector.detectXmlCharset(bis);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = bis.read(buf)) != -1) {
+                baos.write(buf, 0, n);
+            }
+            String raw = new String(baos.toByteArray(), cs);
+
+            // Title
+            if (book.getMetadata().getTitle() == null || book.getMetadata().getTitle().isEmpty() || "Без названия".equals(book.getMetadata().getTitle())) {
+                Matcher m = Pattern.compile("<book-title>([^<]+)</book-title>", Pattern.CASE_INSENSITIVE).matcher(raw);
+                if (m.find()) {
+                    book.getMetadata().setTitle(stripHtmlTags(m.group(1)));
+                } else {
+                    String fn = FileUtils.getFileName(context, uri);
+                    if (fn.contains(".")) fn = fn.substring(0, fn.lastIndexOf('.'));
+                    book.getMetadata().setTitle(fn);
+                }
+            }
+
+            // Paragraphs
+            StringBuilder secContent = new StringBuilder();
+            Matcher pm = Pattern.compile("<p>([\\s\\S]*?)</p>", Pattern.CASE_INSENSITIVE).matcher(raw);
+            int pCount = 0;
+            while (pm.find()) {
+                String pText = stripHtmlTags(pm.group(1)).trim();
+                if (!pText.isEmpty()) {
+                    secContent.append("<p>").append(escapeHtml(pText)).append("</p>");
+                    pCount++;
+                }
+            }
+
+            if (pCount > 0) {
+                Fb2Section sec = new Fb2Section();
+                sec.setAnchorId("chapter_0");
+                sec.setTitle(book.getMetadata().getTitle());
+                sec.setLevel(1);
+                sec.appendContent(secContent.toString());
+                book.addSection(sec);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Fallback parse failed for " + uri, e);
+        }
     }
 
     private static void replaceImagesRecursively(Fb2Section sec, Map<String, String> imgMap) {
@@ -593,8 +655,11 @@ public class Fb2Parser {
             ZipInputStream zis = new ZipInputStream(bis);
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                String entryName = entry.getName().toLowerCase();
-                if (entryName.endsWith(".fb2") || entryName.endsWith(".xml")) {
+                String entryName = entry.getName().replace('\\', '/').toLowerCase();
+                if (entryName.startsWith("meta-inf/") || entryName.equals("mimetype") || entryName.endsWith(".opf")) {
+                    continue; // Skip EPUB metadata files
+                }
+                if (entryName.endsWith(".fb2") || (entryName.endsWith(".xml") && !entryName.contains("container"))) {
                     Log.d(TAG, "Found FB2 entry in zip: " + entry.getName());
                     return zis;
                 }

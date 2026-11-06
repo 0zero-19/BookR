@@ -228,6 +228,61 @@ public class BookRepository {
         return result;
     }
 
+    public synchronized List<BookItem> getReadingBooks(String query) {
+        StringBuilder selection = new StringBuilder(
+                BookDatabaseHelper.COL_BOOK_IS_HIDDEN + " = 0 AND "
+                + "((" + BookDatabaseHelper.COL_BOOK_PROGRESS_PERCENT + " > 0 AND " + BookDatabaseHelper.COL_BOOK_PROGRESS_PERCENT + " < 98) "
+                + "OR (" + BookDatabaseHelper.COL_BOOK_LAST_OPENED + " > 0 AND " + BookDatabaseHelper.COL_BOOK_PROGRESS_PERCENT + " < 98))");
+        List<String> argsList = new ArrayList<>();
+        if (query != null && !query.trim().isEmpty()) {
+            selection.append(" AND (")
+                    .append(BookDatabaseHelper.COL_BOOK_TITLE).append(" LIKE ? OR ")
+                    .append(BookDatabaseHelper.COL_BOOK_AUTHOR).append(" LIKE ?)");
+            String likeArg = "%" + query.trim() + "%";
+            argsList.add(likeArg);
+            argsList.add(likeArg);
+        }
+        String orderBy = BookDatabaseHelper.COL_BOOK_LAST_OPENED + " DESC";
+        String[] selectionArgs = argsList.isEmpty() ? null : argsList.toArray(new String[0]);
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor cursor = db.query(BookDatabaseHelper.TABLE_BOOKS, null, selection.toString(), selectionArgs, null, null, orderBy);
+        List<BookItem> result = new ArrayList<>();
+        if (cursor != null) {
+            while (cursor.moveToNext()) {
+                result.add(cursorToBook(cursor));
+            }
+            cursor.close();
+        }
+        return result;
+    }
+
+    public synchronized List<BookItem> getCompletedBooks(String query) {
+        StringBuilder selection = new StringBuilder(
+                BookDatabaseHelper.COL_BOOK_IS_HIDDEN + " = 0 AND "
+                + BookDatabaseHelper.COL_BOOK_PROGRESS_PERCENT + " >= 98");
+        List<String> argsList = new ArrayList<>();
+        if (query != null && !query.trim().isEmpty()) {
+            selection.append(" AND (")
+                    .append(BookDatabaseHelper.COL_BOOK_TITLE).append(" LIKE ? OR ")
+                    .append(BookDatabaseHelper.COL_BOOK_AUTHOR).append(" LIKE ?)");
+            String likeArg = "%" + query.trim() + "%";
+            argsList.add(likeArg);
+            argsList.add(likeArg);
+        }
+        String orderBy = BookDatabaseHelper.COL_BOOK_LAST_OPENED + " DESC";
+        String[] selectionArgs = argsList.isEmpty() ? null : argsList.toArray(new String[0]);
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor cursor = db.query(BookDatabaseHelper.TABLE_BOOKS, null, selection.toString(), selectionArgs, null, null, orderBy);
+        List<BookItem> result = new ArrayList<>();
+        if (cursor != null) {
+            while (cursor.moveToNext()) {
+                result.add(cursorToBook(cursor));
+            }
+            cursor.close();
+        }
+        return result;
+    }
+
     public synchronized void setFavorite(long bookId, boolean isFavorite) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues cv = new ContentValues();
@@ -904,6 +959,32 @@ public class BookRepository {
         if (onlyFavorite) {
             sel.append(" AND ").append(BookDatabaseHelper.COL_MANGA_IS_FAVORITE).append("=1");
         }
+        if (query != null && !query.trim().isEmpty()) {
+            sel.append(" AND (").append(BookDatabaseHelper.COL_MANGA_TITLE).append(" LIKE ? OR ")
+                    .append(BookDatabaseHelper.COL_MANGA_AUTHOR).append(" LIKE ?)");
+            String q = "%" + query.trim() + "%";
+            args.add(q);
+            args.add(q);
+        }
+        Cursor c = db.query(BookDatabaseHelper.TABLE_MANGA, null,
+                sel.toString(), args.isEmpty() ? null : args.toArray(new String[0]),
+                null, null, BookDatabaseHelper.COL_MANGA_UPDATED_AT + " DESC");
+        List<MangaItem> list = new ArrayList<>();
+        if (c != null) {
+            while (c.moveToNext()) {
+                MangaItem item = cursorToManga(c);
+                item.setDownloadedChaptersCount(getDownloadedChaptersCount(item.getMangaId()));
+                list.add(item);
+            }
+            c.close();
+        }
+        return list;
+    }
+
+    public synchronized List<MangaItem> getReadingManga(String query) {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        StringBuilder sel = new StringBuilder("(" + BookDatabaseHelper.COL_MANGA_LAST_PAGE + " > 0 OR " + BookDatabaseHelper.COL_MANGA_LAST_CHAPTER_ID + " IS NOT NULL)");
+        List<String> args = new ArrayList<>();
         if (query != null && !query.trim().isEmpty()) {
             sel.append(" AND (").append(BookDatabaseHelper.COL_MANGA_TITLE).append(" LIKE ? OR ")
                     .append(BookDatabaseHelper.COL_MANGA_AUTHOR).append(" LIKE ?)");

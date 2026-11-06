@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -12,7 +13,9 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -48,6 +51,7 @@ import com.bookr.reader.network.OnlineBookClient;
 import com.bookr.reader.parser.BookFormat;
 import com.bookr.reader.parser.BookFormatDetector;
 import com.bookr.reader.parser.BookParserManager;
+import com.bookr.reader.ui.dialog.FilterBottomSheet;
 import com.bookr.reader.parser.Fb2Metadata;
 import com.bookr.reader.ui.adapter.BookAdapter;
 import com.bookr.reader.ui.adapter.BookmarkAdapter;
@@ -123,6 +127,17 @@ public class MainActivity extends AppCompatActivity implements
     private TextView tvBookCount;
     private EditText etSearch;
     private ImageView btnClearSearch;
+    private ImageView btnFilterSearch;
+    private HorizontalScrollView filterChipsScroll;
+    private LinearLayout filterChipsContainer;
+    private FilterBottomSheet.FilterCriteria currentFilterCriteria = new FilterBottomSheet.FilterCriteria();
+
+    // Shelf / Collection Subtabs
+    private static final int SHELF_SUBTAB_READING = 0;
+    private static final int SHELF_SUBTAB_COMPLETED = 1;
+    private static final int SHELF_SUBTAB_CUSTOM = 2;
+    private int currentShelfSubTab = SHELF_SUBTAB_READING;
+
     private ThemeBackgroundView mainBgView;
 
     // Navigation pills
@@ -188,6 +203,20 @@ public class MainActivity extends AppCompatActivity implements
         tvBookCount = findViewById(R.id.tvBookCount);
         etSearch = findViewById(R.id.etSearch);
         btnClearSearch = findViewById(R.id.btnClearSearch);
+        btnFilterSearch = findViewById(R.id.btnFilterSearch);
+        filterChipsScroll = findViewById(R.id.filterChipsScroll);
+        filterChipsContainer = findViewById(R.id.filterChipsContainer);
+        if (btnFilterSearch != null) {
+            btnFilterSearch.setOnClickListener(v -> {
+                FilterBottomSheet sheet = FilterBottomSheet.newInstance(currentFilterCriteria);
+                sheet.setListener(criteria -> {
+                    currentFilterCriteria = criteria;
+                    updateFilterChipsUI();
+                    loadCurrentSectionData();
+                });
+                sheet.show(getSupportFragmentManager(), "filter_sheet");
+            });
+        }
 
         // 8 Nav pills + Customization
         mainBgView = findViewById(R.id.mainBgView);
@@ -495,11 +524,14 @@ public class MainActivity extends AppCompatActivity implements
             });
         } else if (section == SECTION_SHELVES) {
             subTabsContainer.setVisibility(View.VISIBLE);
-            tabAll.setVisibility(View.GONE);
-            tabRecent.setVisibility(View.GONE);
-            tabFavorites.setVisibility(View.GONE);
-            btnSectionAction.setVisibility(View.VISIBLE);
-            btnSectionAction.setText("+ Новая полка");
+            tabAll.setVisibility(View.VISIBLE);
+            tabRecent.setVisibility(View.VISIBLE);
+            tabFavorites.setVisibility(View.VISIBLE);
+            tabAll.setText(R.string.tab_collection_reading);
+            tabRecent.setText(R.string.tab_collection_completed);
+            tabFavorites.setText(R.string.tab_collection_custom);
+            btnSectionAction.setVisibility(currentShelfSubTab == SHELF_SUBTAB_CUSTOM ? View.VISIBLE : View.GONE);
+            btnSectionAction.setText("+ Создать");
             btnSectionAction.setOnClickListener(v -> promptCreateShelf());
         } else if (section == SECTION_LIBRARY) {
             subTabsContainer.setVisibility(View.VISIBLE);
@@ -561,6 +593,10 @@ public class MainActivity extends AppCompatActivity implements
             loadOnlineBooks();
         } else if (currentSection == SECTION_MANGA) {
             loadMangaSection();
+        } else if (currentSection == SECTION_SHELVES) {
+            currentShelfSubTab = subTab;
+            btnSectionAction.setVisibility(currentShelfSubTab == SHELF_SUBTAB_CUSTOM ? View.VISIBLE : View.GONE);
+            loadShelves();
         } else {
             loadBooks();
         }
@@ -625,10 +661,12 @@ public class MainActivity extends AppCompatActivity implements
                     break;
             }
 
+            list = applyBookFilters(list);
+            final List<BookItem> finalList = list;
             mainHandler.post(() -> {
-                bookAdapter.setBooks(list);
-                tvBookCount.setText(String.format(Locale.getDefault(), "%d %s", list.size(), getBookCountNoun(list.size())));
-                updateEmptyState(list.isEmpty(), R.string.empty_all_title, R.string.empty_all_desc);
+                bookAdapter.setBooks(finalList);
+                tvBookCount.setText(String.format(Locale.getDefault(), "%d %s", finalList.size(), getBookCountNoun(finalList.size())));
+                updateEmptyState(finalList.isEmpty(), R.string.empty_all_title, R.string.empty_all_desc);
             });
         });
     }
@@ -689,15 +727,41 @@ public class MainActivity extends AppCompatActivity implements
     }
 
     private void loadShelves() {
-        rvBooks.setAdapter(shelfAdapter);
-        executor.execute(() -> {
-            List<ShelfItem> list = repository.getAllShelves(currentSearchQuery);
-            mainHandler.post(() -> {
-                shelfAdapter.setItems(list);
-                tvBookCount.setText(String.format(Locale.getDefault(), "Коллекций: %d", list.size()));
-                updateEmptyState(list.isEmpty(), R.string.empty_shelves_title, R.string.empty_shelves_desc);
+        if (currentShelfSubTab == SHELF_SUBTAB_READING) {
+            rvBooks.setAdapter(bookAdapter);
+            executor.execute(() -> {
+                List<BookItem> list = repository.getReadingBooks(currentSearchQuery);
+                list = applyBookFilters(list);
+                final List<BookItem> finalResult = list;
+                mainHandler.post(() -> {
+                    bookAdapter.setBooks(finalResult);
+                    tvBookCount.setText(String.format(Locale.getDefault(), "Читаю сейчас: %d %s", finalResult.size(), getBookCountNoun(finalResult.size())));
+                    updateEmptyState(finalResult.isEmpty(), R.string.empty_continue_title, R.string.empty_continue_desc);
+                });
             });
-        });
+        } else if (currentShelfSubTab == SHELF_SUBTAB_COMPLETED) {
+            rvBooks.setAdapter(bookAdapter);
+            executor.execute(() -> {
+                List<BookItem> list = repository.getCompletedBooks(currentSearchQuery);
+                list = applyBookFilters(list);
+                final List<BookItem> finalResult = list;
+                mainHandler.post(() -> {
+                    bookAdapter.setBooks(finalResult);
+                    tvBookCount.setText(String.format(Locale.getDefault(), "Прочитано: %d %s", finalResult.size(), getBookCountNoun(finalResult.size())));
+                    updateEmptyState(finalResult.isEmpty(), R.string.empty_recent_title, R.string.empty_recent_desc);
+                });
+            });
+        } else {
+            rvBooks.setAdapter(shelfAdapter);
+            executor.execute(() -> {
+                List<ShelfItem> list = repository.getAllShelves(currentSearchQuery);
+                mainHandler.post(() -> {
+                    shelfAdapter.setItems(list);
+                    tvBookCount.setText(String.format(Locale.getDefault(), "Моих коллекций: %d", list.size()));
+                    updateEmptyState(list.isEmpty(), R.string.empty_shelves_title, R.string.empty_shelves_desc);
+                });
+            });
+        }
     }
 
     private void loadHistory() {
@@ -1219,6 +1283,193 @@ public class MainActivity extends AppCompatActivity implements
         startActivity(intent);
     }
 
+    // --- SEARCH FILTERS ENGINE ---
+
+    private List<BookItem> applyBookFilters(List<BookItem> list) {
+        if (list == null || list.isEmpty() || !currentFilterCriteria.isFiltered()) {
+            return list != null ? list : new ArrayList<>();
+        }
+        List<BookItem> filtered = new ArrayList<>();
+        String fmt = currentFilterCriteria.format;
+        String genre = currentFilterCriteria.genre.toLowerCase(Locale.ROOT);
+
+        for (BookItem b : list) {
+            if (!"Все".equalsIgnoreCase(fmt)) {
+                if (b.getFormat() == null || !b.getFormat().equalsIgnoreCase(fmt)) {
+                    continue;
+                }
+            }
+            if (!"Все".equalsIgnoreCase(genre)) {
+                String meta = ((b.getTitle() != null ? b.getTitle() : "") + " "
+                        + (b.getAuthor() != null ? b.getAuthor() : "") + " "
+                        + (b.getSeries() != null ? b.getSeries() : "") + " "
+                        + (b.getAnnotation() != null ? b.getAnnotation() : "")).toLowerCase(Locale.ROOT);
+                if (!meta.contains(genre)) {
+                    continue;
+                }
+            }
+            filtered.add(b);
+        }
+
+        if ("По названию".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (b1, b2) -> b1.getTitle().compareToIgnoreCase(b2.getTitle()));
+        } else if ("По автору".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (b1, b2) -> b1.getAuthor().compareToIgnoreCase(b2.getAuthor()));
+        } else if ("Сначала новые".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (b1, b2) -> Long.compare(b2.getDateAdded(), b1.getDateAdded()));
+        }
+
+        return filtered;
+    }
+
+    private List<MangaItem> applyMangaFilters(List<MangaItem> list) {
+        if (list == null || list.isEmpty() || !currentFilterCriteria.isFiltered()) {
+            return list != null ? list : new ArrayList<>();
+        }
+        List<MangaItem> filtered = new ArrayList<>();
+        String status = currentFilterCriteria.status;
+        String genre = currentFilterCriteria.genre.toLowerCase(Locale.ROOT);
+
+        for (MangaItem m : list) {
+            if (!"Все".equalsIgnoreCase(status)) {
+                if (m.getStatus() == null || !m.getStatus().equalsIgnoreCase(status)) {
+                    continue;
+                }
+            }
+            if (!"Все".equalsIgnoreCase(genre)) {
+                String meta = ((m.getTitle() != null ? m.getTitle() : "") + " "
+                        + (m.getAuthor() != null ? m.getAuthor() : "") + " "
+                        + (m.getGenres() != null ? m.getGenres() : "") + " "
+                        + (m.getDescription() != null ? m.getDescription() : "")).toLowerCase(Locale.ROOT);
+                if (!meta.contains(genre)) {
+                    continue;
+                }
+            }
+            filtered.add(m);
+        }
+
+        if ("По названию".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (m1, m2) -> m1.getTitle().compareToIgnoreCase(m2.getTitle()));
+        } else if ("По автору".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (m1, m2) -> m1.getAuthor().compareToIgnoreCase(m2.getAuthor()));
+        }
+
+        return filtered;
+    }
+
+    private List<OnlineBookItem> applyOnlineBookFilters(List<OnlineBookItem> list) {
+        if (list == null || list.isEmpty() || !currentFilterCriteria.isFiltered()) {
+            return list != null ? list : new ArrayList<>();
+        }
+        List<OnlineBookItem> filtered = new ArrayList<>();
+        String fmt = currentFilterCriteria.format;
+        String genre = currentFilterCriteria.genre.toLowerCase(Locale.ROOT);
+        String lang = currentFilterCriteria.language;
+
+        for (OnlineBookItem b : list) {
+            if (!"Все".equalsIgnoreCase(fmt)) {
+                if (b.getFormat() == null || !b.getFormat().equalsIgnoreCase(fmt)) {
+                    continue;
+                }
+            }
+            if (!"Все".equalsIgnoreCase(lang)) {
+                if (b.getLanguage() == null || !b.getLanguage().toUpperCase(Locale.ROOT).contains(lang.toUpperCase(Locale.ROOT))) {
+                    continue;
+                }
+            }
+            if (!"Все".equalsIgnoreCase(genre)) {
+                String meta = ((b.getTitle() != null ? b.getTitle() : "") + " "
+                        + (b.getAuthor() != null ? b.getAuthor() : "") + " "
+                        + (b.getGenres() != null ? b.getGenres() : "") + " "
+                        + (b.getDescription() != null ? b.getDescription() : "")).toLowerCase(Locale.ROOT);
+                if (!meta.contains(genre)) {
+                    continue;
+                }
+            }
+            filtered.add(b);
+        }
+
+        if ("По названию".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (b1, b2) -> b1.getTitle().compareToIgnoreCase(b2.getTitle()));
+        } else if ("По автору".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            java.util.Collections.sort(filtered, (b1, b2) -> b1.getAuthor().compareToIgnoreCase(b2.getAuthor()));
+        }
+
+        return filtered;
+    }
+
+    private void updateFilterChipsUI() {
+        if (filterChipsContainer == null || filterChipsScroll == null) return;
+        filterChipsContainer.removeAllViews();
+
+        if (!currentFilterCriteria.isFiltered()) {
+            filterChipsScroll.setVisibility(View.GONE);
+            if (btnFilterSearch != null) btnFilterSearch.setColorFilter(getColor(R.color.text_muted));
+            return;
+        }
+
+        filterChipsScroll.setVisibility(View.VISIBLE);
+        if (btnFilterSearch != null) btnFilterSearch.setColorFilter(Color.WHITE);
+
+        if (!"Все".equalsIgnoreCase(currentFilterCriteria.format)) {
+            addFilterChip("Формат: " + currentFilterCriteria.format, () -> {
+                currentFilterCriteria.format = "Все";
+                updateFilterChipsUI();
+                loadCurrentSectionData();
+            });
+        }
+        if (!"Все".equalsIgnoreCase(currentFilterCriteria.genre)) {
+            addFilterChip("Жанр: " + currentFilterCriteria.genre, () -> {
+                currentFilterCriteria.genre = "Все";
+                updateFilterChipsUI();
+                loadCurrentSectionData();
+            });
+        }
+        if (!"Все".equalsIgnoreCase(currentFilterCriteria.status)) {
+            addFilterChip("Статус: " + currentFilterCriteria.status, () -> {
+                currentFilterCriteria.status = "Все";
+                updateFilterChipsUI();
+                loadCurrentSectionData();
+            });
+        }
+        if (!"Все".equalsIgnoreCase(currentFilterCriteria.language)) {
+            addFilterChip("Язык: " + currentFilterCriteria.language, () -> {
+                currentFilterCriteria.language = "Все";
+                updateFilterChipsUI();
+                loadCurrentSectionData();
+            });
+        }
+        if (!"По умолчанию".equalsIgnoreCase(currentFilterCriteria.sort)) {
+            addFilterChip("Сорт: " + currentFilterCriteria.sort, () -> {
+                currentFilterCriteria.sort = "По умолчанию";
+                updateFilterChipsUI();
+                loadCurrentSectionData();
+            });
+        }
+    }
+
+    private void addFilterChip(String text, Runnable onRemove) {
+        TextView chip = new TextView(this);
+        chip.setText(text + "  ✕");
+        chip.setTextSize(11f);
+        chip.setTextColor(Color.WHITE);
+        chip.setBackgroundResource(R.drawable.bg_glass_pill);
+        chip.setPadding(
+                (int) (10 * getResources().getDisplayMetrics().density),
+                (int) (4 * getResources().getDisplayMetrics().density),
+                (int) (10 * getResources().getDisplayMetrics().density),
+                (int) (4 * getResources().getDisplayMetrics().density)
+        );
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.setMarginEnd((int) (6 * getResources().getDisplayMetrics().density));
+        chip.setLayoutParams(lp);
+        chip.setOnClickListener(v -> onRemove.run());
+        filterChipsContainer.addView(chip);
+    }
+
     // --- ONLINE BOOKS & MANGA SECTIONS ---
 
     private void loadOnlineBooks() {
@@ -1235,10 +1486,11 @@ public class MainActivity extends AppCompatActivity implements
                     @Override
                     public void onSuccess(List<OnlineBookItem> books, String sourceDescription) {
                         bannerLoading.setVisibility(View.GONE);
-                        currentOnlineBooks = books;
-                        onlineBookAdapter.setItems(books);
-                        tvBookCount.setText(sourceDescription + " • Книг: " + books.size());
-                        updateEmptyState(books.isEmpty(), R.string.empty_online_title, R.string.empty_online_desc);
+                        List<OnlineBookItem> filtered = applyOnlineBookFilters(books);
+                        currentOnlineBooks = filtered;
+                        onlineBookAdapter.setItems(filtered);
+                        tvBookCount.setText(sourceDescription + " • Книг: " + filtered.size());
+                        updateEmptyState(filtered.isEmpty(), R.string.empty_online_title, R.string.empty_online_desc);
                     }
 
                     @Override
@@ -1409,12 +1661,14 @@ public class MainActivity extends AppCompatActivity implements
                     }
                     if (!exists) downloaded.add(f);
                 }
+                downloaded = applyMangaFilters(downloaded);
+                final List<MangaItem> finalManga = downloaded;
                 mainHandler.post(() -> {
                     bannerLoading.setVisibility(View.GONE);
-                    currentMangaList = downloaded;
-                    mangaAdapter.setItems(downloaded);
-                    tvBookCount.setText("Скачанная и избранная манга: " + downloaded.size());
-                    updateEmptyState(downloaded.isEmpty(), R.string.empty_manga_title, R.string.empty_manga_desc);
+                    currentMangaList = finalManga;
+                    mangaAdapter.setItems(finalManga);
+                    tvBookCount.setText("Скачанная и избранная манга: " + finalManga.size());
+                    updateEmptyState(finalManga.isEmpty(), R.string.empty_manga_title, R.string.empty_manga_desc);
                 });
             });
         } else {
@@ -1426,10 +1680,11 @@ public class MainActivity extends AppCompatActivity implements
                 @Override
                 public void onSuccess(List<MangaItem> mangaList) {
                     bannerLoading.setVisibility(View.GONE);
-                    currentMangaList = mangaList;
-                    mangaAdapter.setItems(mangaList);
-                    tvBookCount.setText("Каталог манги (Онлайн + Офлайн): " + mangaList.size());
-                    updateEmptyState(mangaList.isEmpty(), R.string.empty_manga_title, R.string.empty_manga_desc);
+                    List<MangaItem> filtered = applyMangaFilters(mangaList);
+                    currentMangaList = filtered;
+                    mangaAdapter.setItems(filtered);
+                    tvBookCount.setText("Каталог манги (Онлайн + Офлайн): " + filtered.size());
+                    updateEmptyState(filtered.isEmpty(), R.string.empty_manga_title, R.string.empty_manga_desc);
                 }
 
                 @Override

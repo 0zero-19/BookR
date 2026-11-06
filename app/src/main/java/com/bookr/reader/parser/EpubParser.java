@@ -56,73 +56,153 @@ public class EpubParser {
 
             Map<String, byte[]> memoryFiles = readEpubKeyFiles(is, false);
             String opfPath = findOpfPath(memoryFiles);
-            if (opfPath == null || !memoryFiles.containsKey(opfPath)) {
-                throw new IOException("Invalid EPUB: META-INF/container.xml or OPF file missing");
-            }
+            byte[] opfBytes = opfPath != null ? getFileBytes(memoryFiles, opfPath) : null;
+            OpfPackage opf = null;
 
-            String opfDir = "";
-            int slashIdx = opfPath.lastIndexOf('/');
-            if (slashIdx != -1) {
-                opfDir = opfPath.substring(0, slashIdx + 1);
-            }
+            if (opfBytes != null) {
+                String opfDir = "";
+                int slashIdx = opfPath.lastIndexOf('/');
+                if (slashIdx != -1) {
+                    opfDir = opfPath.substring(0, slashIdx + 1);
+                }
+                try {
+                    opf = parseOpfFull(opfBytes, opfDir);
+                    book.setMetadata(opf.metadata);
 
-            OpfPackage opf = parseOpfFull(memoryFiles.get(opfPath), opfDir);
-            book.setMetadata(opf.metadata);
-
-            // Cover
-            if (opf.coverHref != null && memoryFiles.containsKey(opf.coverHref)) {
-                byte[] coverBytes = memoryFiles.get(opf.coverHref);
-                book.getMetadata().setCoverImageBytes(coverBytes);
+                    // Cover
+                    if (opf.coverHref != null) {
+                        byte[] coverBytes = getFileBytes(memoryFiles, opf.coverHref);
+                        if (coverBytes != null) {
+                            book.getMetadata().setCoverImageBytes(coverBytes);
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Error parsing OPF package", e);
+                }
             }
 
             // Parse chapters in spine order
             int chapterIdx = 0;
             Map<String, String> spineHrefToAnchor = new HashMap<>();
             Map<String, Fb2Section> anchorToSection = new HashMap<>();
-            for (String spineHref : opf.spineHrefs) {
-                if (memoryFiles.containsKey(spineHref)) {
-                    byte[] chapterBytes = memoryFiles.get(spineHref);
-                    String chapterHtml = new String(chapterBytes, StandardCharsets.UTF_8);
+            if (opf != null && !opf.spineHrefs.isEmpty()) {
+                for (String spineHref : opf.spineHrefs) {
+                    byte[] chapterBytes = getFileBytes(memoryFiles, spineHref);
+                    if (chapterBytes != null) {
+                        String chapterHtml = new String(chapterBytes, StandardCharsets.UTF_8);
 
-                    // Rewrite images to data URIs
-                    chapterHtml = inlineImages(chapterHtml, spineHref, memoryFiles, opf.manifestMediaTypes);
+                        // Rewrite images to data URIs
+                        chapterHtml = inlineImages(chapterHtml, spineHref, memoryFiles, opf.manifestMediaTypes);
 
-                    // Extract chapter body
-                    String bodyContent = extractHtmlBody(chapterHtml);
-                    String title = extractHtmlTitle(chapterHtml);
-                    if (title.isEmpty()) {
-                        title = "Глава " + (chapterIdx + 1);
+                        // Extract chapter body
+                        String bodyContent = extractHtmlBody(chapterHtml);
+                        String title = extractHtmlTitle(chapterHtml);
+                        if (title.isEmpty()) {
+                            title = "Глава " + (chapterIdx + 1);
+                        }
+
+                        String anchorId = "chapter_" + chapterIdx;
+                        Fb2Section section = new Fb2Section();
+                        section.setAnchorId(anchorId);
+                        section.setTitle(title);
+                        section.setLevel(1);
+                        section.appendContent(bodyContent);
+                        book.addSection(section);
+
+                        spineHrefToAnchor.put(spineHref, anchorId);
+                        anchorToSection.put(anchorId, section);
+                        book.getToc().add(new TocItem(chapterIdx, title, anchorId, 1));
+                        chapterIdx++;
                     }
-
-                    String anchorId = "chapter_" + chapterIdx;
-                    Fb2Section section = new Fb2Section();
-                    section.setAnchorId(anchorId);
-                    section.setTitle(title);
-                    section.setLevel(1);
-                    section.appendContent(bodyContent);
-                    book.addSection(section);
-
-                    spineHrefToAnchor.put(spineHref, anchorId);
-                    anchorToSection.put(anchorId, section);
-                    book.getToc().add(new TocItem(chapterIdx, title, anchorId, 1));
-                    chapterIdx++;
                 }
             }
 
-            // If TOC was present in NCX
-            if (opf.ncxHref != null && memoryFiles.containsKey(opf.ncxHref)) {
-                String ncxDir = "";
-                int ncxSlash = opf.ncxHref.lastIndexOf('/');
-                if (ncxSlash != -1) {
-                    ncxDir = opf.ncxHref.substring(0, ncxSlash + 1);
+            // Fallback if spine was empty or chapters were not found in spine
+            if (book.getSections().isEmpty()) {
+                List<String> htmlFiles = new ArrayList<>();
+                for (String k : memoryFiles.keySet()) {
+                    String lk = k.toLowerCase();
+                    if ((lk.endsWith(".xhtml") || lk.endsWith(".html") || lk.endsWith(".htm"))
+                            && !lk.endsWith("toc.ncx")) {
+                        htmlFiles.add(k);
+                    }
                 }
-                List<TocItem> ncxToc = parseNcxToc(memoryFiles.get(opf.ncxHref), ncxDir, spineHrefToAnchor, anchorToSection);
-                if (!ncxToc.isEmpty()) {
-                    book.setToc(ncxToc);
+                java.util.Collections.sort(htmlFiles);
+
+                for (String hf : htmlFiles) {
+                    byte[] chapterBytes = memoryFiles.get(hf);
+                    if (chapterBytes != null) {
+                        String chapterHtml = new String(chapterBytes, StandardCharsets.UTF_8);
+                        String bodyContent = extractHtmlBody(chapterHtml);
+                        String title = extractHtmlTitle(chapterHtml);
+                        if (title.isEmpty()) {
+                            title = "Раздел " + (chapterIdx + 1);
+                        }
+
+                        String anchorId = "chapter_" + chapterIdx;
+                        Fb2Section section = new Fb2Section();
+                        section.setAnchorId(anchorId);
+                        section.setTitle(title);
+                        section.setLevel(1);
+                        section.appendContent(bodyContent);
+                        book.addSection(section);
+                        book.getToc().add(new TocItem(chapterIdx, title, anchorId, 1));
+                        chapterIdx++;
+                    }
+                }
+            }
+
+            // Ensure title is present
+            if (book.getMetadata().getTitle() == null || book.getMetadata().getTitle().isEmpty() || "Без названия".equals(book.getMetadata().getTitle())) {
+                String fn = FileUtils.getFileName(context, uri);
+                if (fn.contains(".")) fn = fn.substring(0, fn.lastIndexOf('.'));
+                book.getMetadata().setTitle(fn);
+            }
+
+            // If TOC was present in NCX
+            if (opf != null && opf.ncxHref != null) {
+                byte[] ncxBytes = getFileBytes(memoryFiles, opf.ncxHref);
+                if (ncxBytes != null) {
+                    String ncxDir = "";
+                    int ncxSlash = opf.ncxHref.lastIndexOf('/');
+                    if (ncxSlash != -1) {
+                        ncxDir = opf.ncxHref.substring(0, ncxSlash + 1);
+                    }
+                    List<TocItem> ncxToc = parseNcxToc(ncxBytes, ncxDir, spineHrefToAnchor, anchorToSection);
+                    if (!ncxToc.isEmpty()) {
+                        book.setToc(ncxToc);
+                    }
                 }
             }
         }
         return book;
+    }
+
+    public static byte[] getFileBytes(Map<String, byte[]> files, String path) {
+        if (files == null || path == null) return null;
+        byte[] direct = files.get(path);
+        if (direct != null) return direct;
+
+        String decoded = path;
+        try {
+            decoded = URLDecoder.decode(path.replace("+", "%2B"), "UTF-8");
+            byte[] dec = files.get(decoded);
+            if (dec != null) return dec;
+        } catch (Exception ignored) {}
+
+        String norm = path.replace('\\', '/').toLowerCase();
+        while (norm.startsWith("/")) norm = norm.substring(1);
+        String decNorm = decoded.replace('\\', '/').toLowerCase();
+        while (decNorm.startsWith("/")) decNorm = decNorm.substring(1);
+
+        for (Map.Entry<String, byte[]> entry : files.entrySet()) {
+            String k = entry.getKey().replace('\\', '/').toLowerCase();
+            while (k.startsWith("/")) k = k.substring(1);
+            if (k.equals(norm) || k.equals(decNorm)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private static Map<String, byte[]> readEpubKeyFiles(InputStream is, boolean metadataOnly) throws IOException {
@@ -245,8 +325,9 @@ public class EpubParser {
 
             if (coverId != null && manifestHref.containsKey(coverId)) {
                 String coverPath = manifestHref.get(coverId);
-                if (files.containsKey(coverPath)) {
-                    meta.setCoverImageBytes(files.get(coverPath));
+                byte[] covBytes = getFileBytes(files, coverPath);
+                if (covBytes != null) {
+                    meta.setCoverImageBytes(covBytes);
                 }
             }
         } catch (Exception e) {

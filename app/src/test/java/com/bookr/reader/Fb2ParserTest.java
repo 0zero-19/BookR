@@ -333,4 +333,62 @@ public class Fb2ParserTest {
         Assert.assertEquals(4, mbm.getPageIndex());
         Assert.assertEquals("Эпичный разворот", mbm.getNote());
     }
+
+    @Test
+    public void testMangaChaptersDeduplicationAndSorting() {
+        java.util.List<MangaChapterItem> raw = new java.util.ArrayList<>();
+        raw.add(new MangaChapterItem("c1_en", "m1", "1", "1", "Prologue EN", "EN", 15));
+        raw.add(new MangaChapterItem("c1_ru", "m1", "1", "1", "Пролог RU", "RU", 18));
+        raw.add(new MangaChapterItem("c3", "m1", "3", "1", "Chapter 3", "RU", 20));
+        raw.add(new MangaChapterItem("c2", "m1", "2", "1", "Chapter 2", "RU", 19));
+        raw.add(new MangaChapterItem("c10", "m1", "10", "2", "Chapter 10", "RU", 22));
+
+        java.util.List<MangaChapterItem> deduplicated = MangaApiClient.deduplicateMangaChapters(raw, "RU");
+
+        Assert.assertEquals(4, deduplicated.size());
+        // Verify chapter 1 picked Russian version
+        Assert.assertEquals("1", deduplicated.get(0).getChapterNumber());
+        Assert.assertEquals("RU", deduplicated.get(0).getLanguage());
+        Assert.assertEquals("Пролог RU", deduplicated.get(0).getTitle());
+
+        // Verify natural numeric sort order: 1, 2, 3, 10 (not 1, 10, 2, 3)
+        Assert.assertEquals("1", deduplicated.get(0).getChapterNumber());
+        Assert.assertEquals("2", deduplicated.get(1).getChapterNumber());
+        Assert.assertEquals("3", deduplicated.get(2).getChapterNumber());
+        Assert.assertEquals("10", deduplicated.get(3).getChapterNumber());
+    }
+
+    @Test
+    public void testCuratedMangaCatalogIconicTitles() {
+        java.util.List<MangaItem> catalog = MangaApiClient.getCuratedMangaList();
+        Assert.assertTrue(catalog.size() >= 20);
+
+        boolean hasBerserk = false;
+        boolean hasOnePiece = false;
+        boolean hasChainsaw = false;
+        boolean hasAoT = false;
+
+        for (MangaItem m : catalog) {
+            String title = m.getTitle().toLowerCase();
+            if (title.contains("berserk") || title.contains("берсерк")) hasBerserk = true;
+            if (title.contains("one piece") || title.contains("ван-пис")) hasOnePiece = true;
+            if (title.contains("chainsaw") || title.contains("бензопила")) hasChainsaw = true;
+            if (title.contains("attack on titan") || title.contains("титанов")) hasAoT = true;
+        }
+
+        Assert.assertTrue(hasBerserk);
+        Assert.assertTrue(hasOnePiece);
+        Assert.assertTrue(hasChainsaw);
+        Assert.assertTrue(hasAoT);
+    }
+
+    @Test
+    public void testCuratedRussianBooksFormatIsEpub() {
+        java.util.List<OnlineBookItem> ruBooks = OnlineBookClient.getCuratedRussianBooks();
+        for (OnlineBookItem b : ruBooks) {
+            if (b.getDownloadUrl() != null && b.getDownloadUrl().contains(".epub")) {
+                Assert.assertEquals("EPUB", b.getFormat().toUpperCase());
+            }
+        }
+    }
 }
