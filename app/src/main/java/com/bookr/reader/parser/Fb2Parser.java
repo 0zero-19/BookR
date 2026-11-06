@@ -21,7 +21,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.Charset;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +47,9 @@ public class Fb2Parser {
             Charset charset = EncodingDetector.detectXmlCharset(bis);
             Log.d(TAG, "Detected XML charset: " + charset.name() + " for " + uri);
 
-            XmlPullParser parser = Xml.newPullParser();
+            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+            factory.setNamespaceAware(true);
+            XmlPullParser parser = factory.newPullParser();
             Reader entityReader = new EntityFilterReader(new InputStreamReader(bis, charset));
             parser.setInput(entityReader);
 
@@ -95,6 +99,22 @@ public class Fb2Parser {
                         }
                     } else if (insideTitleInfo && "lang".equalsIgnoreCase(name)) {
                         meta.setLanguage(safeGetText(parser));
+                    } else if (insideTitleInfo && "genre".equalsIgnoreCase(name)) {
+                        String genre = safeGetText(parser);
+                        if (!genre.isEmpty()) {
+                            meta.getGenres().add(genre);
+                        }
+                    } else if (insideTitleInfo && "sequence".equalsIgnoreCase(name)) {
+                        String seqName = parser.getAttributeValue(null, "name");
+                        String seqNum = parser.getAttributeValue(null, "number");
+                        if (seqName != null && !seqName.trim().isEmpty()) {
+                            meta.setSeries(seqName.trim());
+                            if (seqNum != null) {
+                                try {
+                                    meta.setSeriesNumber(Integer.parseInt(seqNum.trim()));
+                                } catch (NumberFormatException ignored) {}
+                            }
+                        }
                     } else if ("binary".equalsIgnoreCase(name)) {
                         String binaryId = parser.getAttributeValue(null, "id");
                         String contentType = parser.getAttributeValue(null, "content-type");
@@ -191,14 +211,18 @@ public class Fb2Parser {
         StringBuilder annotationBuilder = new StringBuilder();
 
         Fb2Section currentSection = null;
+        Deque<Fb2Section> sectionStack = new ArrayDeque<>();
         StringBuilder currentTitleBuilder = new StringBuilder();
         StringBuilder currentEpigraphBuilder = new StringBuilder();
         StringBuilder currentEpigraphAuthor = new StringBuilder();
 
         String currentNoteId = null;
         StringBuilder currentNoteText = new StringBuilder();
+        String coverImageId = null;
+        boolean insideCoverpage = false;
 
         int tocIndex = 0;
+        int sectionCounter = 0;
         int sectionDepth = 0;
 
         while (eventType != XmlPullParser.END_DOCUMENT) {
@@ -227,8 +251,31 @@ public class Fb2Parser {
                         insideAnnotation = true;
                     } else if (insideAnnotation && "p".equalsIgnoreCase(name)) {
                         annotationBuilder.append("<p>").append(safeGetText(parser)).append("</p>");
+                    } else if (insideTitleInfo && "coverpage".equalsIgnoreCase(name)) {
+                        insideCoverpage = true;
+                    } else if (insideCoverpage && "image".equalsIgnoreCase(name)) {
+                        coverImageId = getHrefAttribute(parser);
+                        if (coverImageId != null && coverImageId.startsWith("#")) {
+                            coverImageId = coverImageId.substring(1);
+                        }
                     } else if (insideTitleInfo && "lang".equalsIgnoreCase(name)) {
                         book.getMetadata().setLanguage(safeGetText(parser));
+                    } else if (insideTitleInfo && "genre".equalsIgnoreCase(name)) {
+                        String genre = safeGetText(parser);
+                        if (!genre.isEmpty()) {
+                            book.getMetadata().getGenres().add(genre);
+                        }
+                    } else if (insideTitleInfo && "sequence".equalsIgnoreCase(name)) {
+                        String seqName = parser.getAttributeValue(null, "name");
+                        String seqNum = parser.getAttributeValue(null, "number");
+                        if (seqName != null && !seqName.trim().isEmpty()) {
+                            book.getMetadata().setSeries(seqName.trim());
+                            if (seqNum != null) {
+                                try {
+                                    book.getMetadata().setSeriesNumber(Integer.parseInt(seqNum.trim()));
+                                } catch (NumberFormatException ignored) {}
+                            }
+                        }
                     }
                 } else if ("body".equalsIgnoreCase(name)) {
                     insideBody = true;
@@ -239,13 +286,15 @@ public class Fb2Parser {
                         sectionDepth++;
                         Fb2Section newSection = new Fb2Section();
                         newSection.setId(parser.getAttributeValue(null, "id"));
+                        newSection.setAnchorId("chapter_" + (sectionCounter++));
                         newSection.setLevel(sectionDepth);
 
-                        if (currentSection == null) {
+                        if (sectionStack.isEmpty()) {
                             book.addSection(newSection);
                         } else {
-                            currentSection.addSubSection(newSection);
+                            sectionStack.peek().addSubSection(newSection);
                         }
+                        sectionStack.push(newSection);
                         currentSection = newSection;
                     } else if ("title".equalsIgnoreCase(name)) {
                         insideTitle = true;
@@ -282,8 +331,10 @@ public class Fb2Parser {
                         } else {
                             if (book.getSections().isEmpty()) {
                                 Fb2Section defaultSec = new Fb2Section();
+                                defaultSec.setAnchorId("chapter_" + (sectionCounter++));
                                 defaultSec.setLevel(1);
                                 book.addSection(defaultSec);
+                                sectionStack.push(defaultSec);
                                 currentSection = defaultSec;
                             }
                             currentSection.appendContent("<p>" + paragraphContent + "</p>");
@@ -325,6 +376,12 @@ public class Fb2Parser {
                     if (binaryId != null && !base64Data.isEmpty()) {
                         String dataUri = "data:" + contentType + ";base64," + base64Data;
                         book.addImage(binaryId, dataUri);
+                        if (coverImageId != null && coverImageId.equals(binaryId)) {
+                            try {
+                                book.getMetadata().setCoverImageBytes(Base64.decode(base64Data, Base64.DEFAULT));
+                                book.getMetadata().setCoverContentType(contentType);
+                            } catch (Exception ignored) {}
+                        }
                     }
                 }
             } else if (eventType == XmlPullParser.END_TAG) {
@@ -332,6 +389,8 @@ public class Fb2Parser {
                     insideDescription = false;
                 } else if ("title-info".equalsIgnoreCase(name)) {
                     insideTitleInfo = false;
+                } else if ("coverpage".equalsIgnoreCase(name)) {
+                    insideCoverpage = false;
                 } else if ("author".equalsIgnoreCase(name) && insideAuthor) {
                     insideAuthor = false;
                     StringBuilder fullAuthor = new StringBuilder();
@@ -353,9 +412,16 @@ public class Fb2Parser {
                     insideTitle = false;
                     if (currentSection != null && currentTitleBuilder.length() > 0) {
                         String titleStr = currentTitleBuilder.toString().trim();
-                        currentSection.setTitle(titleStr);
-                        String anchorId = "chapter_" + tocIndex;
-                        book.getToc().add(new TocItem(tocIndex++, titleStr, anchorId, currentSection.getLevel()));
+                        if (insidePoem || insideCite) {
+                            currentSection.appendContent("<div class=\"poem-title\"><strong>" + titleStr + "</strong></div>");
+                        } else if (currentSection.getTitle() == null || currentSection.getTitle().isEmpty()) {
+                            String plainTitle = stripHtmlTags(titleStr);
+                            currentSection.setTitle(plainTitle);
+                            String anchorId = currentSection.getAnchorId() != null
+                                    ? currentSection.getAnchorId()
+                                    : ("chapter_" + tocIndex);
+                            book.getToc().add(new TocItem(tocIndex++, plainTitle, anchorId, currentSection.getLevel()));
+                        }
                     }
                 } else if ("epigraph".equalsIgnoreCase(name) && insideEpigraph) {
                     insideEpigraph = false;
@@ -378,10 +444,17 @@ public class Fb2Parser {
                         currentNoteId = null;
                     } else if (insideBody && !insideNotesBody) {
                         sectionDepth = Math.max(0, sectionDepth - 1);
+                        if (!sectionStack.isEmpty()) {
+                            sectionStack.pop();
+                        }
+                        currentSection = sectionStack.peek();
                     }
                 } else if ("body".equalsIgnoreCase(name)) {
                     insideBody = false;
                     insideNotesBody = false;
+                    sectionStack.clear();
+                    currentSection = null;
+                    sectionDepth = 0;
                 }
             }
             eventType = parser.next();
@@ -400,7 +473,8 @@ public class Fb2Parser {
             int idx = 0;
             for (Fb2Section sec : book.getSections()) {
                 String title = (sec.getTitle() != null && !sec.getTitle().isEmpty()) ? sec.getTitle() : "Раздел " + (idx + 1);
-                book.getToc().add(new TocItem(idx, title, "chapter_" + idx, sec.getLevel()));
+                String anchorId = sec.getAnchorId() != null ? sec.getAnchorId() : ("chapter_" + idx);
+                book.getToc().add(new TocItem(idx, title, anchorId, sec.getLevel()));
                 idx++;
             }
         }
@@ -530,6 +604,16 @@ public class Fb2Parser {
         }
 
         return bis;
+    }
+
+    private static String stripHtmlTags(String html) {
+        if (html == null) return "";
+        return html.replaceAll("<[^>]*>", "")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&amp;", "&")
+                .trim();
     }
 
     private static String escapeHtml(String text) {

@@ -54,16 +54,34 @@ public class BookmarkAdapter extends RecyclerView.Adapter<BookmarkAdapter.Bookma
     @Override
     public void onBindViewHolder(@NonNull BookmarkViewHolder holder, int position) {
         BookmarkItem item = items.get(position);
-        holder.tvChapter.setText(item.getChapterTitle());
+        String header = item.getChapterTitle();
+        if (item.getBookTitle() != null && !item.getBookTitle().trim().isEmpty()
+                && !"Без названия".equals(item.getBookTitle().trim())) {
+            header = item.getBookTitle().trim() + " • " + header;
+        }
+        holder.tvChapter.setText(header);
 
+        StringBuilder snippetBuilder = new StringBuilder();
         if (item.getSnippet() != null && !item.getSnippet().trim().isEmpty()) {
-            holder.tvSnippet.setText(item.getSnippet().trim());
+            snippetBuilder.append(item.getSnippet().trim());
+        }
+        if (item.getComment() != null && !item.getComment().trim().isEmpty()) {
+            if (snippetBuilder.length() > 0) snippetBuilder.append("\n");
+            snippetBuilder.append("💬 ").append(item.getComment().trim());
+        }
+        if (snippetBuilder.length() > 0) {
+            holder.tvSnippet.setText(snippetBuilder.toString());
             holder.tvSnippet.setVisibility(View.VISIBLE);
         } else {
             holder.tvSnippet.setVisibility(View.GONE);
         }
 
-        holder.tvDate.setText(FileUtils.formatDateTime(item.getCreatedAt()));
+        String dateLine = FileUtils.formatDateTime(item.getCreatedAt());
+        float pct = item.getProgressPercent();
+        if (pct > 0f) {
+            dateLine = String.format(java.util.Locale.getDefault(), "%.1f%% • %s", pct, dateLine);
+        }
+        holder.tvDate.setText(dateLine);
 
         holder.itemView.setOnClickListener(v -> {
             if (listener != null) listener.onBookmarkClick(item);

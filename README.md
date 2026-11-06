@@ -4,15 +4,17 @@ A minimalist, offline-first Android ebook reader with a monochrome Glassmorphism
 
 ## Features
 
-- **Multiple ebook formats** — support for FB2, FB2.ZIP, EPUB, PDF, TXT, HTML, and other formats as implemented.
+- **Multiple ebook formats** — native support for FB2, FB2.ZIP, EPUB, PDF, TXT, HTML/XHTML, RTF, and MOBI/AZW3 (with PalmDOC LZ77 decompression).
+- **Online Books Mode ("Онлайн книги")** — browse, search, read online, and download free books from **Project Gutenberg (Gutendex API)**, **OpenLibrary / Internet Archive**, curated Russian & World classics, and any **OPDS 1.2 Atom XML** catalog (including custom user-added OPDS servers).
+- **Manga & Webtoon Section ("Манга")** — dedicated online & offline manga catalog (**MangaDex API v5** + built-in titles), chapter language filters (`RU` / `EN`), single & batch chapter downloading for offline reading, and page-level manga bookmarks.
+- **Dedicated Manga Reader** — supports **Webtoon (Vertical Scroll)**, **Left-to-Right (LTR)**, and **Japanese Right-to-Left (RTL)** reading modes, pinch-to-zoom & double-tap zoom, eye-care/high-contrast/AMOLED-invert visual filters, and **Data Saver** mode.
 - **Folder-based library** — import entire folders and index supported books, including subdirectories.
-- **Advanced reading experience** — paginated reading, continuous scrolling, adjustable typography, and reading progress restoration.
-- **Bookmarks and quotes** — save passages, preserve book metadata, and access bookmarks independently of the original files.
+- **Advanced reading experience** — paginated reading, continuous scrolling, adjustable typography, in-book full-text search, and reading progress restoration.
+- **Bookmarks, quotes, and manga bookmarks** — save passages, manga pages, and book metadata independently of the original files, with full JSON backup and restore.
 - **Reading notes** — create, edit, search, and organize notes linked to books or selected passages.
 - **Custom themes** — create and save themes with custom HEX/RGBA colors, transparency, and interface styling.
 - **Custom backgrounds** — use personal images or animated GIFs with adjustable brightness, blur, opacity, and scaling.
-- **Library management** — search, sorting, favorites, collections, and reading history.
-- **Offline-first** — reading and personal data are stored locally.
+- **Library management** — search, sorting, favorites, collections (shelves), and reading history.
 - **Privacy-focused** — no advertising or unnecessary tracking.
 
 > Feature availability depends on the current implementation. Consult the release notes for verified format support and known limitations.

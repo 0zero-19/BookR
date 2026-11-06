@@ -32,13 +32,23 @@ public class BookmarkItem implements Serializable {
     }
 
     public int getPosition() {
-        if (pageNumber > 0) return pageNumber;
-        if (positionStr != null) {
+        if (positionStr != null && !positionStr.trim().isEmpty()) {
             try {
-                return (int) (Float.parseFloat(positionStr) * 10f);
+                float pct = Float.parseFloat(positionStr.trim().replace(',', '.'));
+                return Math.round(pct * 10f);
             } catch (Exception ignored) {}
         }
+        if (pageNumber > 0) return pageNumber;
         return 0;
+    }
+
+    public float getProgressPercent() {
+        if (positionStr != null && !positionStr.trim().isEmpty()) {
+            try {
+                return Float.parseFloat(positionStr.trim().replace(',', '.'));
+            } catch (Exception ignored) {}
+        }
+        return pageNumber > 0 ? (pageNumber / 10f) : 0f;
     }
 
     public void setPosition(int position) {

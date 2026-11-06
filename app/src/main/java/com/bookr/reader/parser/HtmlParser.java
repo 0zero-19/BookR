@@ -80,24 +80,33 @@ public class HtmlParser {
                 }
             }
 
-            Fb2Section section = new Fb2Section();
-            section.setTitle(meta.getTitle());
-            section.setLevel(1);
-            section.appendContent(bodyContent);
-            book.addSection(section);
-
-            // Find headers for TOC
-            Pattern hPattern = Pattern.compile("(?is)<h([1-3])[^>]*>(.*?)</h\\1>");
+            // Find headers for TOC and inject matching anchor IDs
+            Pattern hPattern = Pattern.compile("(?is)<h([1-3])([^>]*)>(.*?)</h\\1>");
             Matcher hMatcher = hPattern.matcher(bodyContent);
+            StringBuffer modifiedHtml = new StringBuffer();
             int idx = 0;
             while (hMatcher.find()) {
                 int lvl = Integer.parseInt(hMatcher.group(1));
-                String text = hMatcher.group(2).replaceAll("<[^>]+>", "").trim();
+                String attrs = hMatcher.group(2) != null ? hMatcher.group(2) : "";
+                String inner = hMatcher.group(3);
+                String text = inner.replaceAll("<[^>]+>", "").trim();
                 if (!text.isEmpty()) {
-                    book.getToc().add(new TocItem(idx, text, "chapter_" + idx, lvl));
+                    String anchorId = "heading_" + idx;
+                    book.getToc().add(new TocItem(idx, text, anchorId, lvl));
+                    String cleanAttrs = attrs.replaceAll("(?i)\\s+id\\s*=\\s*(['\"])[^'\"]*\\1", "");
+                    String replacement = "<h" + lvl + " id=\"" + anchorId + "\"" + cleanAttrs + ">" + inner + "</h" + lvl + ">";
+                    hMatcher.appendReplacement(modifiedHtml, Matcher.quoteReplacement(replacement));
                     idx++;
                 }
             }
+            hMatcher.appendTail(modifiedHtml);
+
+            Fb2Section section = new Fb2Section();
+            section.setAnchorId("chapter_0");
+            section.setTitle(meta.getTitle());
+            section.setLevel(1);
+            section.appendContent(modifiedHtml.toString());
+            book.addSection(section);
 
             if (book.getToc().isEmpty()) {
                 book.getToc().add(new TocItem(0, meta.getTitle(), "chapter_0", 1));

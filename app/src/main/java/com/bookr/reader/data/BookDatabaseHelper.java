@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteOpenHelper;
 
 public class BookDatabaseHelper extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "bookr_library.db";
-    private static final int DATABASE_VERSION = 3;
+    private static final int DATABASE_VERSION = 5;
 
     // Books table
     public static final String TABLE_BOOKS = "books";
@@ -102,6 +102,60 @@ public class BookDatabaseHelper extends SQLiteOpenHelper {
     public static final String COL_THEME_JSON = "json_data";
     public static final String COL_THEME_CREATED_AT = "created_at";
 
+    // Manga table
+    public static final String TABLE_MANGA = "manga";
+    public static final String COL_MANGA_ID = "id";
+    public static final String COL_MANGA_EXTERNAL_ID = "manga_id";
+    public static final String COL_MANGA_TITLE = "title";
+    public static final String COL_MANGA_AUTHOR = "author";
+    public static final String COL_MANGA_DESC = "description";
+    public static final String COL_MANGA_COVER_URL = "cover_url";
+    public static final String COL_MANGA_LOCAL_COVER = "local_cover_path";
+    public static final String COL_MANGA_STATUS = "status";
+    public static final String COL_MANGA_GENRES = "genres";
+    public static final String COL_MANGA_LAST_CHAPTER_ID = "last_chapter_id";
+    public static final String COL_MANGA_LAST_CHAPTER_TITLE = "last_chapter_title";
+    public static final String COL_MANGA_LAST_PAGE = "last_page";
+    public static final String COL_MANGA_IS_FAVORITE = "is_favorite";
+    public static final String COL_MANGA_IS_DOWNLOADED = "is_downloaded";
+    public static final String COL_MANGA_UPDATED_AT = "updated_at";
+
+    // Manga Chapters table
+    public static final String TABLE_MANGA_CHAPTERS = "manga_chapters";
+    public static final String COL_MC_ID = "id";
+    public static final String COL_MC_CHAPTER_ID = "chapter_id";
+    public static final String COL_MC_MANGA_ID = "manga_id";
+    public static final String COL_MC_CHAPTER_NUM = "chapter_num";
+    public static final String COL_MC_VOLUME_NUM = "volume_num";
+    public static final String COL_MC_TITLE = "title";
+    public static final String COL_MC_LANGUAGE = "language";
+    public static final String COL_MC_PAGES_COUNT = "pages_count";
+    public static final String COL_MC_IS_DOWNLOADED = "is_downloaded";
+    public static final String COL_MC_LOCAL_DIR = "local_dir_path";
+    public static final String COL_MC_READ_PAGE = "read_page";
+    public static final String COL_MC_IS_COMPLETED = "is_completed";
+    public static final String COL_MC_PUBLISHED_AT = "published_at";
+
+    // Manga Bookmarks table
+    public static final String TABLE_MANGA_BOOKMARKS = "manga_bookmarks";
+    public static final String COL_MBM_ID = "id";
+    public static final String COL_MBM_MANGA_ID = "manga_id";
+    public static final String COL_MBM_MANGA_TITLE = "manga_title";
+    public static final String COL_MBM_CHAPTER_ID = "chapter_id";
+    public static final String COL_MBM_CHAPTER_TITLE = "chapter_title";
+    public static final String COL_MBM_PAGE_INDEX = "page_index";
+    public static final String COL_MBM_NOTE = "note";
+    public static final String COL_MBM_COVER_URL = "cover_url";
+    public static final String COL_MBM_CREATED_AT = "created_at";
+
+    // OPDS Catalogs table
+    public static final String TABLE_OPDS_CATALOGS = "opds_catalogs";
+    public static final String COL_OPDS_ID = "id";
+    public static final String COL_OPDS_TITLE = "title";
+    public static final String COL_OPDS_URL = "url";
+    public static final String COL_OPDS_DESC = "description";
+    public static final String COL_OPDS_CREATED_AT = "created_at";
+
     private static BookDatabaseHelper instance;
 
     public static synchronized BookDatabaseHelper getInstance(Context context) {
@@ -188,7 +242,8 @@ public class BookDatabaseHelper extends SQLiteOpenHelper {
         String createShelfBooksTable = "CREATE TABLE " + TABLE_SHELF_BOOKS + " ("
                 + COL_SB_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
                 + COL_SB_SHELF_ID + " INTEGER, "
-                + COL_SB_BOOK_ID + " INTEGER"
+                + COL_SB_BOOK_ID + " INTEGER, "
+                + "UNIQUE(" + COL_SB_SHELF_ID + ", " + COL_SB_BOOK_ID + ")"
                 + ");";
 
         String createFolderSourcesTable = "CREATE TABLE " + TABLE_FOLDER_SOURCES + " ("
@@ -225,6 +280,64 @@ public class BookDatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX idx_bookmarks_uuid ON " + TABLE_BOOKMARKS + " (" + COL_BM_BOOK_UUID + ");");
         db.execSQL("CREATE INDEX idx_notes_uuid ON " + TABLE_NOTES + " (" + COL_NOTE_BOOK_UUID + ");");
         db.execSQL("CREATE INDEX idx_quotes_uuid ON " + TABLE_QUOTES + " (" + COL_QUOTE_BOOK_UUID + ");");
+
+        createV5Tables(db);
+    }
+
+    private void createV5Tables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_MANGA + " ("
+                + COL_MANGA_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_MANGA_EXTERNAL_ID + " TEXT UNIQUE, "
+                + COL_MANGA_TITLE + " TEXT, "
+                + COL_MANGA_AUTHOR + " TEXT, "
+                + COL_MANGA_DESC + " TEXT, "
+                + COL_MANGA_COVER_URL + " TEXT, "
+                + COL_MANGA_LOCAL_COVER + " TEXT, "
+                + COL_MANGA_STATUS + " TEXT, "
+                + COL_MANGA_GENRES + " TEXT, "
+                + COL_MANGA_LAST_CHAPTER_ID + " TEXT, "
+                + COL_MANGA_LAST_CHAPTER_TITLE + " TEXT, "
+                + COL_MANGA_LAST_PAGE + " INTEGER DEFAULT 0, "
+                + COL_MANGA_IS_FAVORITE + " INTEGER DEFAULT 0, "
+                + COL_MANGA_IS_DOWNLOADED + " INTEGER DEFAULT 0, "
+                + COL_MANGA_UPDATED_AT + " INTEGER DEFAULT 0"
+                + ");");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_MANGA_CHAPTERS + " ("
+                + COL_MC_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_MC_CHAPTER_ID + " TEXT UNIQUE, "
+                + COL_MC_MANGA_ID + " TEXT, "
+                + COL_MC_CHAPTER_NUM + " TEXT, "
+                + COL_MC_VOLUME_NUM + " TEXT, "
+                + COL_MC_TITLE + " TEXT, "
+                + COL_MC_LANGUAGE + " TEXT, "
+                + COL_MC_PAGES_COUNT + " INTEGER DEFAULT 0, "
+                + COL_MC_IS_DOWNLOADED + " INTEGER DEFAULT 0, "
+                + COL_MC_LOCAL_DIR + " TEXT, "
+                + COL_MC_READ_PAGE + " INTEGER DEFAULT 0, "
+                + COL_MC_IS_COMPLETED + " INTEGER DEFAULT 0, "
+                + COL_MC_PUBLISHED_AT + " INTEGER DEFAULT 0"
+                + ");");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_MANGA_BOOKMARKS + " ("
+                + COL_MBM_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_MBM_MANGA_ID + " TEXT, "
+                + COL_MBM_MANGA_TITLE + " TEXT, "
+                + COL_MBM_CHAPTER_ID + " TEXT, "
+                + COL_MBM_CHAPTER_TITLE + " TEXT, "
+                + COL_MBM_PAGE_INDEX + " INTEGER DEFAULT 0, "
+                + COL_MBM_NOTE + " TEXT, "
+                + COL_MBM_COVER_URL + " TEXT, "
+                + COL_MBM_CREATED_AT + " INTEGER DEFAULT 0"
+                + ");");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_OPDS_CATALOGS + " ("
+                + COL_OPDS_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_OPDS_TITLE + " TEXT, "
+                + COL_OPDS_URL + " TEXT UNIQUE, "
+                + COL_OPDS_DESC + " TEXT, "
+                + COL_OPDS_CREATED_AT + " INTEGER DEFAULT 0"
+                + ");");
     }
 
     @Override
@@ -308,6 +421,22 @@ public class BookDatabaseHelper extends SQLiteOpenHelper {
         if (oldVersion < 3) {
             try {
                 db.execSQL("ALTER TABLE " + TABLE_CUSTOM_THEMES + " ADD COLUMN " + COL_THEME_JSON + " TEXT;");
+            } catch (Exception ignored) {}
+        }
+
+        if (oldVersion < 4) {
+            try {
+                db.execSQL("DELETE FROM " + TABLE_SHELF_BOOKS + " WHERE " + COL_SB_ID + " NOT IN ("
+                        + "SELECT MIN(" + COL_SB_ID + ") FROM " + TABLE_SHELF_BOOKS
+                        + " GROUP BY " + COL_SB_SHELF_ID + ", " + COL_SB_BOOK_ID + ");");
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_shelf_books_unique ON "
+                        + TABLE_SHELF_BOOKS + " (" + COL_SB_SHELF_ID + ", " + COL_SB_BOOK_ID + ");");
+            } catch (Exception ignored) {}
+        }
+
+        if (oldVersion < 5) {
+            try {
+                createV5Tables(db);
             } catch (Exception ignored) {}
         }
     }

@@ -11,6 +11,8 @@ public class Fb2Metadata implements Serializable {
     private byte[] coverImageBytes;
     private String coverContentType = "image/jpeg";
     private String language = "ru";
+    private String series = "";
+    private int seriesNumber = 0;
     private List<String> genres = new ArrayList<>();
 
     public String getTitle() {
@@ -67,5 +69,21 @@ public class Fb2Metadata implements Serializable {
 
     public void setGenres(List<String> genres) {
         this.genres = genres;
+    }
+
+    public String getSeries() {
+        return series != null ? series : "";
+    }
+
+    public void setSeries(String series) {
+        this.series = series != null ? series : "";
+    }
+
+    public int getSeriesNumber() {
+        return seriesNumber;
+    }
+
+    public void setSeriesNumber(int seriesNumber) {
+        this.seriesNumber = seriesNumber;
     }
 }

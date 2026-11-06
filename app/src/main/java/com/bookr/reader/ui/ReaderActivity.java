@@ -66,6 +66,7 @@ import com.bookr.reader.ui.dialog.TocBottomSheet;
 import com.bookr.reader.util.FileUtils;
 
 import java.io.File;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -80,10 +81,15 @@ public class ReaderActivity extends AppCompatActivity implements
     public static final String EXTRA_BOOK_ID = "extra_book_id";
     public static final String EXTRA_BOOK_URI = "extra_book_uri";
     public static final String EXTRA_BOOK_TITLE = "extra_book_title";
+    public static final String EXTRA_TARGET_PERCENT = "extra_target_percent";
+    public static final String EXTRA_TARGET_PAGE = "extra_target_page";
 
     private long bookId;
     private String bookUriString;
     private String bookTitle;
+    private float targetPercent = -1f;
+    private int targetPage = -1;
+    private int activeSleepTimerMinutes = 0;
 
     private BookRepository repository;
     private ReaderSettings settings;
@@ -144,14 +150,20 @@ public class ReaderActivity extends AppCompatActivity implements
             bookUriString = getIntent().getData().toString();
         }
         bookTitle = getIntent().getStringExtra(EXTRA_BOOK_TITLE);
+        targetPercent = getIntent().getFloatExtra(EXTRA_TARGET_PERCENT, -1f);
+        targetPage = getIntent().getIntExtra(EXTRA_TARGET_PAGE, -1);
 
         repository = new BookRepository(this);
         settings = ReaderSettings.load(this);
 
         if (bookId > 0) {
             currentBook = repository.getBookById(bookId);
-            if (currentBook != null && currentBook.getTitle() != null) {
-                bookTitle = currentBook.getTitle();
+            if (currentBook != null) {
+                if (currentBook.getTitle() != null) {
+                    bookTitle = currentBook.getTitle();
+                }
+                currentProgressPercent = currentBook.getProgressPercent();
+                currentScrollPosition = currentBook.getCurrentPosition();
             }
         }
 
@@ -231,12 +243,13 @@ public class ReaderActivity extends AppCompatActivity implements
     }
 
     private void applyFullscreen() {
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (controller == null) return;
         if (settings.isFullscreenMode()) {
-            WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-            if (controller != null) {
-                controller.hide(WindowInsetsCompat.Type.systemBars());
-                controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-            }
+            controller.hide(WindowInsetsCompat.Type.systemBars());
+            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars());
         }
     }
 
@@ -261,9 +274,16 @@ public class ReaderActivity extends AppCompatActivity implements
                 super.onPageFinished(view, url);
                 isBookLoaded = true;
                 loadingLayout.setVisibility(View.GONE);
+                updateBookmarkIconState();
 
-                // Restore saved reading position
-                if (bookId > 0) {
+                // Restore target bookmark or saved reading position
+                if (targetPercent >= 0f) {
+                    final float pctToRestore = targetPercent;
+                    targetPercent = -1f;
+                    mainHandler.postDelayed(() -> {
+                        wvReader.evaluateJavascript("scrollToPercent(" + pctToRestore + ");", null);
+                    }, 250);
+                } else if (bookId > 0) {
                     BookItem item = repository.getBookById(bookId);
                     if (item != null && item.getProgressPercent() > 0) {
                         mainHandler.postDelayed(() -> {
@@ -297,11 +317,13 @@ public class ReaderActivity extends AppCompatActivity implements
                 bm.setBookTitle(title);
                 bm.setBookAuthor(author);
                 bm.setChapterTitle(chapter);
-                bm.setPositionStr(String.format(Locale.getDefault(), "%.1f", currentProgressPercent));
+                bm.setPositionStr(String.format(Locale.US, "%.1f", currentProgressPercent));
+                bm.setPageNumber(currentPageIndex);
                 bm.setSnippet(selectedText);
                 bm.setBookmarkType(BookmarkItem.TYPE_QUOTE);
                 bm.setCreatedAt(System.currentTimeMillis());
                 repository.addBookmark(bm);
+                updateBookmarkIconState();
                 Toast.makeText(this, "Цитата добавлена в закладки", Toast.LENGTH_SHORT).show();
                 break;
 
@@ -340,7 +362,7 @@ public class ReaderActivity extends AppCompatActivity implements
             MenuItem.OnMenuItemClickListener itemClickListener = item -> {
                 int id = item.getItemId();
                 wvReader.evaluateJavascript("(function() { return window.getSelection().toString(); })()", value -> {
-                    String cleanText = value != null ? value.replace("\"", "").trim() : "";
+                    String cleanText = unescapeJsString(value);
                     if (!cleanText.isEmpty()) {
                         mainHandler.post(() -> handleSelectedTextAction(id, cleanText));
                     }
@@ -381,7 +403,8 @@ public class ReaderActivity extends AppCompatActivity implements
                         note.setBookUuid(bookUuid);
                         note.setBookTitle(bookTitle);
                         note.setChapterTitle(chapter);
-                        note.setPositionStr(String.format(Locale.getDefault(), "%.1f", currentProgressPercent));
+                        note.setPositionStr(String.format(Locale.US, "%.1f", currentProgressPercent));
+                        note.setPageNumber(currentPageIndex);
                         note.setSelectedText(selectedText);
                         note.setNoteText(noteText);
                         note.setCreatedAt(System.currentTimeMillis());
@@ -392,6 +415,31 @@ public class ReaderActivity extends AppCompatActivity implements
                 })
                 .setNegativeButton(R.string.btn_cancel, null)
                 .show();
+    }
+
+    private String unescapeJsString(String rawValue) {
+        if (rawValue == null || "null".equals(rawValue)) return "";
+        try {
+            Object parsed = new org.json.JSONTokener(rawValue).nextValue();
+            return parsed != null ? parsed.toString().trim() : "";
+        } catch (Exception e) {
+            String s = rawValue.trim();
+            if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+                s = s.substring(1, s.length() - 1);
+            }
+            return s.replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                    .trim();
+        }
+    }
+
+    private void updateBookmarkIconState() {
+        if (ivBookmarkIcon == null || bookId <= 0) return;
+        List<BookmarkItem> bms = repository.getBookmarks(bookId);
+        ivBookmarkIcon.setImageResource((bms != null && !bms.isEmpty())
+                ? R.drawable.ic_bookmark
+                : R.drawable.ic_bookmark_border);
     }
 
     private void setupListeners() {
@@ -419,6 +467,7 @@ public class ReaderActivity extends AppCompatActivity implements
         // Settings
         findViewById(R.id.btnReaderSettings).setOnClickListener(v -> {
             ReaderSettingsBottomSheet sheet = ReaderSettingsBottomSheet.newInstance();
+            sheet.setSelectedSleepMinutes(activeSleepTimerMinutes);
             sheet.setListener(this);
             sheet.show(getSupportFragmentManager(), "reader_settings");
         });
@@ -578,6 +627,11 @@ public class ReaderActivity extends AppCompatActivity implements
             rvPdfPages.setLayoutManager(pdfLayoutManager);
             pdfAdapter = new PdfPageAdapter(this, pdfPfd, pageIndex -> toggleControls());
             rvPdfPages.setAdapter(pdfAdapter);
+            isBookLoaded = true;
+            updateBookmarkIconState();
+
+            int totalPages = pdfAdapter.getItemCount();
+            seekProgress.setMax(Math.max(1, totalPages - 1));
 
             rvPdfPages.addOnScrollListener(new RecyclerView.OnScrollListener() {
                 @Override
@@ -586,8 +640,12 @@ public class ReaderActivity extends AppCompatActivity implements
                     int pos = pdfLayoutManager.findFirstVisibleItemPosition();
                     int total = pdfAdapter.getItemCount();
                     if (pos >= 0 && total > 0) {
-                        currentProgressPercent = (float) pos / (float) (total - 1) * 100f;
-                        seekProgress.setProgress((int) (currentProgressPercent * 10));
+                        currentPageIndex = pos + 1;
+                        totalPagesCount = total;
+                        currentScrollPosition = pos;
+                        currentProgressPercent = total > 1 ? ((float) pos / (float) (total - 1) * 100f) : 100f;
+                        seekProgress.setMax(Math.max(1, total - 1));
+                        seekProgress.setProgress(pos);
                         tvProgressLeft.setText(String.format(Locale.getDefault(), "%.0f%%", currentProgressPercent));
                         tvProgressRight.setText(String.format(Locale.getDefault(), "Стр. %d из %d", pos + 1, total));
 
@@ -598,11 +656,19 @@ public class ReaderActivity extends AppCompatActivity implements
                 }
             });
 
-            // Restore PDF progress
-            if (bookId > 0) {
+            // Restore target bookmark or saved PDF progress
+            if (targetPage > 0 && totalPages > 0) {
+                int p = Math.min(totalPages - 1, Math.max(0, targetPage - 1));
+                targetPage = -1;
+                rvPdfPages.scrollToPosition(p);
+            } else if (targetPercent >= 0f && totalPages > 1) {
+                int p = Math.min(totalPages - 1, Math.max(0, Math.round(targetPercent / 100f * (totalPages - 1))));
+                targetPercent = -1f;
+                rvPdfPages.scrollToPosition(p);
+            } else if (bookId > 0) {
                 BookItem item = repository.getBookById(bookId);
                 if (item != null && item.getCurrentPosition() > 0) {
-                    rvPdfPages.scrollToPosition(item.getCurrentPosition());
+                    rvPdfPages.scrollToPosition(Math.min(Math.max(0, totalPages - 1), item.getCurrentPosition()));
                 }
             }
         });
@@ -686,11 +752,14 @@ public class ReaderActivity extends AppCompatActivity implements
 
     @Override
     public void onBookmarkSelected(BookmarkItem bookmark) {
-        if (currentFormat == BookFormat.PDF) {
-            int page = Math.max(0, bookmark.getPageNumber() - 1);
-            rvPdfPages.scrollToPosition(page);
+        if (currentFormat == BookFormat.PDF && pdfAdapter != null) {
+            int total = pdfAdapter.getItemCount();
+            int page = bookmark.getPageNumber() > 0
+                    ? Math.max(0, bookmark.getPageNumber() - 1)
+                    : Math.round(bookmark.getProgressPercent() / 100f * Math.max(0, total - 1));
+            rvPdfPages.scrollToPosition(Math.min(Math.max(0, total - 1), page));
         } else {
-            wvReader.evaluateJavascript("scrollToPercent(" + (bookmark.getPosition() / 10f) + ");", null);
+            wvReader.evaluateJavascript("scrollToPercent(" + bookmark.getProgressPercent() + ");", null);
         }
     }
 
@@ -708,8 +777,12 @@ public class ReaderActivity extends AppCompatActivity implements
         bm.setBookUuid(bookUuid);
         bm.setBookTitle(title);
         bm.setBookAuthor(author);
+        if (currentBook != null && currentBook.getSeries() != null && !currentBook.getSeries().isEmpty()) {
+            bm.setSeriesInfo(currentBook.getSeries() + (currentBook.getSeriesNumber() > 0 ? " #" + currentBook.getSeriesNumber() : ""));
+        }
         bm.setChapterTitle(chapter);
-        bm.setPositionStr(String.format(Locale.getDefault(), "%.1f", currentProgressPercent));
+        bm.setPositionStr(String.format(Locale.US, "%.1f", currentProgressPercent));
+        bm.setPageNumber(currentPageIndex);
         bm.setSnippet(snippet);
         bm.setCreatedAt(System.currentTimeMillis());
 
@@ -720,10 +793,12 @@ public class ReaderActivity extends AppCompatActivity implements
         }
 
         repository.addBookmark(bm);
+        updateBookmarkIconState();
         Toast.makeText(this, R.string.bookmark_added, Toast.LENGTH_SHORT).show();
     }
 
     public void setSleepTimer(int minutes) {
+        this.activeSleepTimerMinutes = minutes;
         if (sleepTimerRunnable != null) {
             sleepTimerHandler.removeCallbacks(sleepTimerRunnable);
             sleepTimerRunnable = null;
@@ -732,6 +807,7 @@ public class ReaderActivity extends AppCompatActivity implements
         if (minutes > 0) {
             Toast.makeText(this, String.format(Locale.getDefault(), "Таймер сна: %d мин", minutes), Toast.LENGTH_SHORT).show();
             sleepTimerRunnable = () -> {
+                activeSleepTimerMinutes = 0;
                 Toast.makeText(ReaderActivity.this, "Таймер сна завершён", Toast.LENGTH_SHORT).show();
                 finish();
             };
@@ -823,11 +899,12 @@ public class ReaderActivity extends AppCompatActivity implements
     }
 
     private void saveReadingProgress() {
-        if (bookId > 0 && currentProgressPercent >= 0) {
-            int pos = currentScrollPosition;
-            int total = 0;
+        if (isBookLoaded && bookId > 0 && currentProgressPercent >= 0) {
+            int pos = settings.isPagedMode() ? currentPageIndex : currentScrollPosition;
+            int total = settings.isPagedMode() ? totalPagesCount : 0;
             if (currentFormat == BookFormat.PDF && pdfLayoutManager != null && pdfAdapter != null) {
-                pos = pdfLayoutManager.findFirstVisibleItemPosition();
+                int pdfPos = pdfLayoutManager.findFirstVisibleItemPosition();
+                if (pdfPos >= 0) pos = pdfPos;
                 total = pdfAdapter.getItemCount();
             }
             repository.updateProgress(bookId, currentProgressPercent, pos, total);
@@ -888,8 +965,10 @@ public class ReaderActivity extends AppCompatActivity implements
                 currentScrollPosition = scrollY;
                 currentProgressPercent = percent;
 
+                seekProgress.setMax(1000);
                 seekProgress.setProgress((int) (percent * 10));
                 tvProgressLeft.setText(String.format(Locale.getDefault(), "%.0f%%", percent));
+                tvProgressRight.setText(String.format(Locale.getDefault(), "%.1f%%", percent));
 
                 if (bookId > 0) {
                     repository.updateProgress(bookId, percent, scrollY, 0);

@@ -10,6 +10,7 @@ import com.bookr.reader.data.model.TocItem;
 import com.bookr.reader.util.FileUtils;
 
 import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -75,6 +77,8 @@ public class EpubParser {
 
             // Parse chapters in spine order
             int chapterIdx = 0;
+            Map<String, String> spineHrefToAnchor = new HashMap<>();
+            Map<String, Fb2Section> anchorToSection = new HashMap<>();
             for (String spineHref : opf.spineHrefs) {
                 if (memoryFiles.containsKey(spineHref)) {
                     byte[] chapterBytes = memoryFiles.get(spineHref);
@@ -90,20 +94,29 @@ public class EpubParser {
                         title = "Глава " + (chapterIdx + 1);
                     }
 
+                    String anchorId = "chapter_" + chapterIdx;
                     Fb2Section section = new Fb2Section();
+                    section.setAnchorId(anchorId);
                     section.setTitle(title);
                     section.setLevel(1);
                     section.appendContent(bodyContent);
                     book.addSection(section);
 
-                    book.getToc().add(new TocItem(chapterIdx, title, "chapter_" + chapterIdx, 1));
+                    spineHrefToAnchor.put(spineHref, anchorId);
+                    anchorToSection.put(anchorId, section);
+                    book.getToc().add(new TocItem(chapterIdx, title, anchorId, 1));
                     chapterIdx++;
                 }
             }
 
             // If TOC was present in NCX
             if (opf.ncxHref != null && memoryFiles.containsKey(opf.ncxHref)) {
-                List<TocItem> ncxToc = parseNcxToc(memoryFiles.get(opf.ncxHref));
+                String ncxDir = "";
+                int ncxSlash = opf.ncxHref.lastIndexOf('/');
+                if (ncxSlash != -1) {
+                    ncxDir = opf.ncxHref.substring(0, ncxSlash + 1);
+                }
+                List<TocItem> ncxToc = parseNcxToc(memoryFiles.get(opf.ncxHref), ncxDir, spineHrefToAnchor, anchorToSection);
                 if (!ncxToc.isEmpty()) {
                     book.setToc(ncxToc);
                 }
@@ -121,14 +134,19 @@ public class EpubParser {
             if (entry.isDirectory()) continue;
 
             String lower = name.toLowerCase();
+            boolean isImage = lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                    || lower.endsWith(".png") || lower.endsWith(".gif") || lower.endsWith(".webp");
             boolean isKeyFile = lower.equals("meta-inf/container.xml")
                     || lower.endsWith(".opf")
                     || lower.endsWith(".ncx")
-                    || (!metadataOnly && (lower.endsWith(".xhtml") || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")));
+                    || (!metadataOnly && (lower.endsWith(".xhtml") || lower.endsWith(".html") || lower.endsWith(".htm") || isImage));
 
             if (metadataOnly) {
-                // For metadata only read container, opf and possible cover images
-                isKeyFile = lower.equals("meta-inf/container.xml") || lower.endsWith(".opf") || lower.contains("cover");
+                // For metadata read container, opf and images (for cover extraction)
+                long entrySize = entry.getSize();
+                isKeyFile = lower.equals("meta-inf/container.xml")
+                        || lower.endsWith(".opf")
+                        || (isImage && (entrySize <= 0 || entrySize < 4 * 1024 * 1024));
             }
 
             if (isKeyFile) {
@@ -156,13 +174,13 @@ public class EpubParser {
         }
         if (containerData != null) {
             try {
-                XmlPullParser parser = Xml.newPullParser();
+                XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
                 parser.setInput(new StringReader(new String(containerData, StandardCharsets.UTF_8)));
                 int event = parser.getEventType();
                 while (event != XmlPullParser.END_DOCUMENT) {
                     if (event == XmlPullParser.START_TAG && "rootfile".equalsIgnoreCase(parser.getName())) {
                         String fullPath = parser.getAttributeValue(null, "full-path");
-                        if (fullPath != null) return fullPath.replace('\\', '/');
+                        if (fullPath != null) return resolvePath("", fullPath.replace('\\', '/'));
                     }
                     event = parser.next();
                 }
@@ -182,7 +200,7 @@ public class EpubParser {
             int slash = opfPath.lastIndexOf('/');
             if (slash != -1) opfDir = opfPath.substring(0, slash + 1);
 
-            XmlPullParser parser = Xml.newPullParser();
+            XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
             parser.setInput(new EntityFilterReader(new StringReader(new String(opfBytes, StandardCharsets.UTF_8))));
 
             int event = parser.getEventType();
@@ -200,15 +218,22 @@ public class EpubParser {
                         meta.setAnnotation(Fb2Parser.safeGetText(parser));
                     } else if ("meta".equalsIgnoreCase(name)) {
                         String mName = parser.getAttributeValue(null, "name");
+                        String mContent = parser.getAttributeValue(null, "content");
                         if ("cover".equalsIgnoreCase(mName)) {
-                            coverId = parser.getAttributeValue(null, "content");
+                            coverId = mContent;
+                        } else if ("calibre:series".equalsIgnoreCase(mName) && mContent != null) {
+                            meta.setSeries(mContent.trim());
+                        } else if ("calibre:series_index".equalsIgnoreCase(mName) && mContent != null) {
+                            try {
+                                meta.setSeriesNumber((int) Float.parseFloat(mContent.trim()));
+                            } catch (NumberFormatException ignored) {}
                         }
                     } else if ("item".equalsIgnoreCase(name)) {
                         String id = parser.getAttributeValue(null, "id");
                         String href = parser.getAttributeValue(null, "href");
                         String props = parser.getAttributeValue(null, "properties");
                         if (id != null && href != null) {
-                            manifestHref.put(id, opfDir + href);
+                            manifestHref.put(id, resolvePath(opfDir, href));
                             if (props != null && props.contains("cover-image")) {
                                 coverId = id;
                             }
@@ -231,7 +256,7 @@ public class EpubParser {
 
     private static OpfPackage parseOpfFull(byte[] opfBytes, String opfDir) throws Exception {
         OpfPackage opf = new OpfPackage();
-        XmlPullParser parser = Xml.newPullParser();
+        XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
         parser.setInput(new EntityFilterReader(new StringReader(new String(opfBytes, StandardCharsets.UTF_8))));
 
         int event = parser.getEventType();
@@ -250,8 +275,15 @@ public class EpubParser {
                     opf.metadata.setAnnotation(Fb2Parser.safeGetText(parser));
                 } else if ("meta".equalsIgnoreCase(name)) {
                     String mName = parser.getAttributeValue(null, "name");
+                    String mContent = parser.getAttributeValue(null, "content");
                     if ("cover".equalsIgnoreCase(mName)) {
-                        coverId = parser.getAttributeValue(null, "content");
+                        coverId = mContent;
+                    } else if ("calibre:series".equalsIgnoreCase(mName) && mContent != null) {
+                        opf.metadata.setSeries(mContent.trim());
+                    } else if ("calibre:series_index".equalsIgnoreCase(mName) && mContent != null) {
+                        try {
+                            opf.metadata.setSeriesNumber((int) Float.parseFloat(mContent.trim()));
+                        } catch (NumberFormatException ignored) {}
                     }
                 } else if ("item".equalsIgnoreCase(name)) {
                     String id = parser.getAttributeValue(null, "id");
@@ -292,8 +324,16 @@ public class EpubParser {
 
     private static String resolvePath(String baseDir, String relativePath) {
         if (relativePath == null) return "";
-        if (relativePath.startsWith("/")) return relativePath.substring(1);
-        String combined = baseDir + relativePath;
+        String cleanRel = relativePath;
+        int hashIdx = cleanRel.indexOf('#');
+        if (hashIdx != -1) {
+            cleanRel = cleanRel.substring(0, hashIdx);
+        }
+        try {
+            cleanRel = URLDecoder.decode(cleanRel.replace("+", "%2B"), "UTF-8");
+        } catch (Exception ignored) {}
+        if (cleanRel.startsWith("/")) return cleanRel.substring(1);
+        String combined = baseDir + cleanRel;
         // Normalize ../ and ./
         String[] parts = combined.split("/");
         List<String> list = new ArrayList<>();
@@ -375,32 +415,62 @@ public class EpubParser {
         return "";
     }
 
-    private static List<TocItem> parseNcxToc(byte[] ncxBytes) {
+    private static List<TocItem> parseNcxToc(
+            byte[] ncxBytes,
+            String ncxDir,
+            Map<String, String> spineHrefToAnchor,
+            Map<String, Fb2Section> anchorToSection
+    ) {
         List<TocItem> toc = new ArrayList<>();
         try {
-            XmlPullParser parser = Xml.newPullParser();
+            XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
             parser.setInput(new EntityFilterReader(new StringReader(new String(ncxBytes, StandardCharsets.UTF_8))));
 
             int event = parser.getEventType();
             int idx = 0;
+            int navPointDepth = 0;
+            boolean insideNavLabel = false;
             String currentTitle = null;
-            int level = 1;
 
             while (event != XmlPullParser.END_DOCUMENT) {
                 String name = parser.getName();
                 if (event == XmlPullParser.START_TAG) {
                     if ("navPoint".equalsIgnoreCase(name)) {
-                        level++;
-                    } else if ("text".equalsIgnoreCase(name)) {
+                        navPointDepth++;
+                        currentTitle = null;
+                    } else if (navPointDepth > 0 && "navLabel".equalsIgnoreCase(name)) {
+                        insideNavLabel = true;
+                    } else if (navPointDepth > 0 && insideNavLabel && "text".equalsIgnoreCase(name)) {
                         currentTitle = Fb2Parser.safeGetText(parser);
+                    } else if (navPointDepth > 0 && "content".equalsIgnoreCase(name)) {
+                        String src = parser.getAttributeValue(null, "src");
                         if (currentTitle != null && !currentTitle.isEmpty()) {
-                            toc.add(new TocItem(idx, currentTitle, "chapter_" + idx, Math.max(1, level - 1)));
+                            String resolvedHref = src != null ? resolvePath(ncxDir, src) : "";
+                            String anchorId = spineHrefToAnchor.get(resolvedHref);
+                            if (anchorId == null) {
+                                anchorId = "chapter_" + Math.min(idx, Math.max(0, spineHrefToAnchor.size() - 1));
+                            } else {
+                                Fb2Section sec = anchorToSection.get(anchorId);
+                                if (sec != null && (sec.getTitle() == null || sec.getTitle().startsWith("Глава "))) {
+                                    sec.setTitle(currentTitle);
+                                }
+                            }
+                            toc.add(new TocItem(idx, currentTitle, anchorId, navPointDepth));
                             idx++;
+                            currentTitle = null;
                         }
                     }
                 } else if (event == XmlPullParser.END_TAG) {
-                    if ("navPoint".equalsIgnoreCase(name)) {
-                        level = Math.max(1, level - 1);
+                    if ("navLabel".equalsIgnoreCase(name)) {
+                        insideNavLabel = false;
+                    } else if ("navPoint".equalsIgnoreCase(name)) {
+                        if (currentTitle != null && !currentTitle.isEmpty()) {
+                            String anchorId = "chapter_" + Math.min(idx, Math.max(0, spineHrefToAnchor.size() - 1));
+                            toc.add(new TocItem(idx, currentTitle, anchorId, navPointDepth));
+                            idx++;
+                            currentTitle = null;
+                        }
+                        navPointDepth = Math.max(0, navPointDepth - 1);
                     }
                 }
                 event = parser.next();

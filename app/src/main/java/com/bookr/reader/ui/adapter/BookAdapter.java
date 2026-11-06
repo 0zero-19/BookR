@@ -2,7 +2,7 @@ package com.bookr.reader.ui.adapter;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bookr.reader.R;
 import com.bookr.reader.data.model.BookItem;
 import com.bookr.reader.util.FileUtils;
+import com.bookr.reader.util.ImageHelper;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -32,6 +33,12 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.BookViewHolder
     private final Context context;
     private final List<BookItem> books = new ArrayList<>();
     private final OnBookClickListener listener;
+    private final LruCache<String, Bitmap> coverCache = new LruCache<String, Bitmap>(16 * 1024) {
+        @Override
+        protected int sizeOf(String key, Bitmap value) {
+            return Math.max(1, value.getByteCount() / 1024);
+        }
+    };
 
     public BookAdapter(Context context, OnBookClickListener listener) {
         this.context = context;
@@ -57,7 +64,15 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.BookViewHolder
     public void onBindViewHolder(@NonNull BookViewHolder holder, int position) {
         BookItem book = books.get(position);
         holder.tvTitle.setText(book.getTitle());
-        holder.tvAuthor.setText(book.getAuthor());
+        String authorLine = book.getAuthor();
+        if (book.getSeries() != null && !book.getSeries().trim().isEmpty()) {
+            String seriesStr = book.getSeries().trim();
+            if (book.getSeriesNumber() > 0) {
+                seriesStr += " #" + book.getSeriesNumber();
+            }
+            authorLine = authorLine + " • " + seriesStr;
+        }
+        holder.tvAuthor.setText(authorLine);
 
         // Progress badge
         if (book.getProgressPercent() > 0) {
@@ -75,9 +90,16 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.BookViewHolder
         }
 
         // Cover
-        if (book.getCoverPath() != null && new File(book.getCoverPath()).exists()) {
+        String coverPath = book.getCoverPath();
+        if (coverPath != null && new File(coverPath).exists()) {
             try {
-                Bitmap bitmap = BitmapFactory.decodeFile(book.getCoverPath());
+                Bitmap bitmap = coverCache.get(coverPath);
+                if (bitmap == null || bitmap.isRecycled()) {
+                    bitmap = ImageHelper.loadSampledBitmap(coverPath, 160, 220);
+                    if (bitmap != null) {
+                        coverCache.put(coverPath, bitmap);
+                    }
+                }
                 if (bitmap != null) {
                     holder.ivCover.setImageBitmap(bitmap);
                     holder.ivCover.setVisibility(View.VISIBLE);

@@ -33,10 +33,18 @@ import com.bookr.reader.data.BookRepository;
 import com.bookr.reader.data.model.BookItem;
 import com.bookr.reader.data.model.BookmarkItem;
 import com.bookr.reader.data.model.FolderSourceItem;
+import com.bookr.reader.data.model.MangaBookmarkItem;
+import com.bookr.reader.data.model.MangaChapterItem;
+import com.bookr.reader.data.model.MangaItem;
 import com.bookr.reader.data.model.NoteItem;
+import com.bookr.reader.data.model.OnlineBookItem;
+import com.bookr.reader.data.model.OpdsCatalogItem;
 import com.bookr.reader.data.model.QuoteItem;
 import com.bookr.reader.data.model.ReaderSettings;
 import com.bookr.reader.data.model.ShelfItem;
+import com.bookr.reader.network.MangaApiClient;
+import com.bookr.reader.network.NetworkImageLoader;
+import com.bookr.reader.network.OnlineBookClient;
 import com.bookr.reader.parser.BookFormat;
 import com.bookr.reader.parser.BookFormatDetector;
 import com.bookr.reader.parser.BookParserManager;
@@ -69,7 +77,7 @@ public class MainActivity extends AppCompatActivity implements
 
     private static final String TAG = "BookR.Main";
 
-    // 8 Main Sections
+    // Main Sections (Offline + Online Books + Manga)
     public static final int SECTION_LIBRARY = 0;
     public static final int SECTION_CONTINUE = 1;
     public static final int SECTION_BOOKMARKS = 2;
@@ -78,6 +86,8 @@ public class MainActivity extends AppCompatActivity implements
     public static final int SECTION_SHELVES = 5;
     public static final int SECTION_HISTORY = 6;
     public static final int SECTION_SETTINGS = 7;
+    public static final int SECTION_ONLINE_BOOKS = 8;
+    public static final int SECTION_MANGA = 9;
 
     // Library Sub-tabs
     private static final int SUBTAB_ALL = 0;
@@ -88,16 +98,22 @@ public class MainActivity extends AppCompatActivity implements
     private int currentSubTab = SUBTAB_ALL;
     private int currentSort = BookRepository.SORT_TITLE_ASC;
     private String currentSearchQuery = "";
+    private String activeOpdsUrl = "https://standardebooks.org/feeds/opds";
 
     private BookRepository repository;
     private ReaderSettings settings;
 
     // Adapters
     private BookAdapter bookAdapter;
+    private OnlineBookAdapter onlineBookAdapter;
+    private MangaAdapter mangaAdapter;
+    private MangaBookmarkAdapter mangaBookmarkAdapter;
     private BookmarkAdapter bookmarkAdapter;
     private QuoteAdapter quoteAdapter;
     private NoteAdapter noteAdapter;
     private ShelfAdapter shelfAdapter;
+    private List<OnlineBookItem> currentOnlineBooks = new ArrayList<>();
+    private List<MangaItem> currentMangaList = new ArrayList<>();
 
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -110,7 +126,7 @@ public class MainActivity extends AppCompatActivity implements
     private ThemeBackgroundView mainBgView;
 
     // Navigation pills
-    private TextView navLibrary, navContinue, navBookmarks, navQuotes, navNotes, navShelves, navHistory, navSettings, navCustomization;
+    private TextView navLibrary, navOnlineBooks, navManga, navContinue, navBookmarks, navQuotes, navNotes, navShelves, navHistory, navSettings, navCustomization;
 
     // Subtabs & actions
     private LinearLayout subTabsContainer;
@@ -143,7 +159,7 @@ public class MainActivity extends AppCompatActivity implements
         handleIncomingIntent(getIntent());
 
         if (settings.isAutoScanOnStartup()) {
-            autoScanConnectedFolders();
+            autoScanConnectedFolders(false);
         }
     }
 
@@ -180,6 +196,8 @@ public class MainActivity extends AppCompatActivity implements
         }
 
         navLibrary = findViewById(R.id.navLibrary);
+        navOnlineBooks = findViewById(R.id.navOnlineBooks);
+        navManga = findViewById(R.id.navManga);
         navContinue = findViewById(R.id.navContinue);
         navBookmarks = findViewById(R.id.navBookmarks);
         navQuotes = findViewById(R.id.navQuotes);
@@ -206,6 +224,48 @@ public class MainActivity extends AppCompatActivity implements
 
         // Initialize adapters
         bookAdapter = new BookAdapter(this, this);
+
+        onlineBookAdapter = new OnlineBookAdapter(new OnlineBookAdapter.OnOnlineBookActionListener() {
+            @Override
+            public void onReadOnline(OnlineBookItem item) {
+                openOrDownloadOnlineBook(item, true, -1);
+            }
+
+            @Override
+            public void onDownloadBook(OnlineBookItem item, int position) {
+                openOrDownloadOnlineBook(item, false, position);
+            }
+
+            @Override
+            public void onShowDetails(OnlineBookItem item, int position) {
+                showOnlineBookDetailsDialog(item, position);
+            }
+        });
+
+        mangaAdapter = new MangaAdapter(new MangaAdapter.OnMangaClickListener() {
+            @Override
+            public void onMangaClick(MangaItem manga) {
+                openMangaDetails(manga);
+            }
+
+            @Override
+            public void onMangaLongClick(MangaItem manga) {
+                showMangaQuickOptionsDialog(manga);
+            }
+        });
+
+        mangaBookmarkAdapter = new MangaBookmarkAdapter(new MangaBookmarkAdapter.OnMangaBookmarkListener() {
+            @Override
+            public void onOpenBookmark(MangaBookmarkItem item) {
+                openMangaBookmarkTarget(item);
+            }
+
+            @Override
+            public void onDeleteBookmark(MangaBookmarkItem item, int position) {
+                repository.deleteMangaBookmark(item.getId());
+                loadMangaSection();
+            }
+        });
 
         bookmarkAdapter = new BookmarkAdapter(this, null, new BookmarkAdapter.OnBookmarkClickListener() {
             @Override
@@ -362,6 +422,12 @@ public class MainActivity extends AppCompatActivity implements
 
         // Nav pill clicks
         navLibrary.setOnClickListener(v -> selectSection(SECTION_LIBRARY));
+        if (navOnlineBooks != null) {
+            navOnlineBooks.setOnClickListener(v -> selectSection(SECTION_ONLINE_BOOKS));
+        }
+        if (navManga != null) {
+            navManga.setOnClickListener(v -> selectSection(SECTION_MANGA));
+        }
         navContinue.setOnClickListener(v -> selectSection(SECTION_CONTINUE));
         navBookmarks.setOnClickListener(v -> selectSection(SECTION_BOOKMARKS));
         navQuotes.setOnClickListener(v -> selectSection(SECTION_QUOTES));
@@ -395,9 +461,15 @@ public class MainActivity extends AppCompatActivity implements
     }
 
     private void selectSection(int section) {
+        if (section == SECTION_SETTINGS) {
+            showSettingsSection();
+            return;
+        }
         currentSection = section;
 
         setPillState(navLibrary, section == SECTION_LIBRARY);
+        if (navOnlineBooks != null) setPillState(navOnlineBooks, section == SECTION_ONLINE_BOOKS);
+        if (navManga != null) setPillState(navManga, section == SECTION_MANGA);
         setPillState(navContinue, section == SECTION_CONTINUE);
         setPillState(navBookmarks, section == SECTION_BOOKMARKS);
         setPillState(navQuotes, section == SECTION_QUOTES);
@@ -406,7 +478,7 @@ public class MainActivity extends AppCompatActivity implements
         setPillState(navHistory, section == SECTION_HISTORY);
         setPillState(navSettings, section == SECTION_SETTINGS);
 
-        subTabsContainer.setVisibility(section == SECTION_LIBRARY ? View.VISIBLE : View.GONE);
+        subTabsContainer.setVisibility(View.GONE);
         btnSectionAction.setVisibility(View.GONE);
 
         if (section == SECTION_NOTES) {
@@ -430,12 +502,47 @@ public class MainActivity extends AppCompatActivity implements
             btnSectionAction.setText("+ Новая полка");
             btnSectionAction.setOnClickListener(v -> promptCreateShelf());
         } else if (section == SECTION_LIBRARY) {
+            subTabsContainer.setVisibility(View.VISIBLE);
             tabAll.setVisibility(View.VISIBLE);
             tabRecent.setVisibility(View.VISIBLE);
             tabFavorites.setVisibility(View.VISIBLE);
+            tabAll.setText(R.string.tab_all);
+            tabRecent.setText(R.string.tab_recent);
+            tabFavorites.setText(R.string.tab_favorites);
+        } else if (section == SECTION_ONLINE_BOOKS) {
+            subTabsContainer.setVisibility(View.VISIBLE);
+            tabAll.setVisibility(View.VISIBLE);
+            tabRecent.setVisibility(View.VISIBLE);
+            tabFavorites.setVisibility(View.VISIBLE);
+            tabAll.setText(R.string.tab_online_ru);
+            tabRecent.setText(R.string.tab_online_world);
+            tabFavorites.setText(R.string.tab_online_opds);
+            btnSectionAction.setVisibility(View.VISIBLE);
+            updateOnlineSectionActionButton();
+        } else if (section == SECTION_MANGA) {
+            subTabsContainer.setVisibility(View.VISIBLE);
+            tabAll.setVisibility(View.VISIBLE);
+            tabRecent.setVisibility(View.VISIBLE);
+            tabFavorites.setVisibility(View.VISIBLE);
+            tabAll.setText(R.string.tab_manga_popular);
+            tabRecent.setText(R.string.tab_manga_downloaded);
+            tabFavorites.setText(R.string.tab_manga_bookmarks);
+            btnSectionAction.setVisibility(View.VISIBLE);
+            btnSectionAction.setText("Случайная");
+            btnSectionAction.setOnClickListener(v -> openRandomManga());
         }
 
         loadCurrentSectionData();
+    }
+
+    private void updateOnlineSectionActionButton() {
+        if (currentSubTab == SUBTAB_FAVORITES) {
+            btnSectionAction.setText("+ OPDS");
+            btnSectionAction.setOnClickListener(v -> showOpdsCatalogSelectorDialog());
+        } else {
+            btnSectionAction.setText("Случайная");
+            btnSectionAction.setOnClickListener(v -> openRandomOnlineBook());
+        }
     }
 
     private void selectSubTab(int subTab) {
@@ -449,7 +556,14 @@ public class MainActivity extends AppCompatActivity implements
         tabFavorites.setBackgroundResource(subTab == SUBTAB_FAVORITES ? R.drawable.bg_glass_pill : R.drawable.bg_glass_pill_inactive);
         tabFavorites.setTextColor(getResources().getColor(subTab == SUBTAB_FAVORITES ? R.color.white : R.color.text_secondary));
 
-        loadBooks();
+        if (currentSection == SECTION_ONLINE_BOOKS) {
+            updateOnlineSectionActionButton();
+            loadOnlineBooks();
+        } else if (currentSection == SECTION_MANGA) {
+            loadMangaSection();
+        } else {
+            loadBooks();
+        }
     }
 
     private void setPillState(TextView tv, boolean active) {
@@ -460,6 +574,12 @@ public class MainActivity extends AppCompatActivity implements
     private void loadCurrentSectionData() {
         swipeRefresh.setRefreshing(false);
         switch (currentSection) {
+            case SECTION_ONLINE_BOOKS:
+                loadOnlineBooks();
+                break;
+            case SECTION_MANGA:
+                loadMangaSection();
+                break;
             case SECTION_CONTINUE:
                 loadContinueReading();
                 break;
@@ -535,7 +655,7 @@ public class MainActivity extends AppCompatActivity implements
     private void loadBookmarks() {
         rvBooks.setAdapter(bookmarkAdapter);
         executor.execute(() -> {
-            List<BookmarkItem> list = repository.getAllBookmarks();
+            List<BookmarkItem> list = repository.getAllBookmarks(currentSearchQuery);
             mainHandler.post(() -> {
                 bookmarkAdapter.setItems(list);
                 tvBookCount.setText(String.format(Locale.getDefault(), "Закладок: %d", list.size()));
@@ -571,7 +691,7 @@ public class MainActivity extends AppCompatActivity implements
     private void loadShelves() {
         rvBooks.setAdapter(shelfAdapter);
         executor.execute(() -> {
-            List<ShelfItem> list = repository.getAllShelves();
+            List<ShelfItem> list = repository.getAllShelves(currentSearchQuery);
             mainHandler.post(() -> {
                 shelfAdapter.setItems(list);
                 tvBookCount.setText(String.format(Locale.getDefault(), "Коллекций: %d", list.size()));
@@ -603,12 +723,14 @@ public class MainActivity extends AppCompatActivity implements
     }
 
     private void showSettingsSection() {
-        tvBookCount.setText(R.string.nav_settings);
-        emptyState.setVisibility(View.GONE);
-        rvBooks.setVisibility(View.GONE);
-
-        // Show theme editor immediately or offer quick dialog
-        ThemeEditorDialog.newInstance().show(getSupportFragmentManager(), "theme_editor_main");
+        ThemeEditorDialog dialog = ThemeEditorDialog.newInstance();
+        dialog.setListener(updatedSettings -> {
+            this.settings = ReaderSettings.load(this);
+            if (mainBgView != null) {
+                mainBgView.setConfig(this.settings.getActiveTheme(), false);
+            }
+        });
+        dialog.show(getSupportFragmentManager(), "theme_editor_main");
     }
 
     private void updateEmptyState(boolean isEmpty, int titleRes, int descRes) {
@@ -637,7 +759,19 @@ public class MainActivity extends AppCompatActivity implements
             final BookItem finalBook = book;
             mainHandler.post(() -> {
                 if (finalBook != null) {
-                    onBookClick(finalBook);
+                    repository.updateLastOpened(finalBook.getId());
+                    Intent intent = new Intent(this, ReaderActivity.class);
+                    Uri uri = Uri.parse(finalBook.getUri());
+                    intent.setData(uri);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    intent.putExtra(ReaderActivity.EXTRA_BOOK_ID, finalBook.getId());
+                    intent.putExtra(ReaderActivity.EXTRA_BOOK_URI, finalBook.getUri());
+                    intent.putExtra(ReaderActivity.EXTRA_BOOK_TITLE, finalBook.getTitle());
+                    intent.putExtra(ReaderActivity.EXTRA_TARGET_PERCENT, bookmark.getProgressPercent());
+                    if (bookmark.getPageNumber() > 0) {
+                        intent.putExtra(ReaderActivity.EXTRA_TARGET_PAGE, bookmark.getPageNumber());
+                    }
+                    startActivity(intent);
                 } else {
                     Toast.makeText(this, "Книга была удалена из библиотеки, но закладка сохранена", Toast.LENGTH_LONG).show();
                 }
@@ -668,7 +802,7 @@ public class MainActivity extends AppCompatActivity implements
 
             @Override
             public void onRescanAllRequested() {
-                autoScanConnectedFolders();
+                autoScanConnectedFolders(true);
             }
 
             @Override
@@ -828,6 +962,8 @@ public class MainActivity extends AppCompatActivity implements
                 book.setUri(uri.toString());
                 book.setTitle(meta.getTitle().equals("Без названия") ? fallbackTitle : meta.getTitle());
                 book.setAuthor(meta.getAuthor());
+                book.setSeries(meta.getSeries());
+                book.setSeriesNumber(meta.getSeriesNumber());
                 book.setAnnotation(meta.getAnnotation());
                 book.setFileSize(fileSize);
                 book.setFormat(format.name());
@@ -901,6 +1037,8 @@ public class MainActivity extends AppCompatActivity implements
                     book.setUri(fileUri.toString());
                     book.setTitle(meta.getTitle().equals("Без названия") ? fallbackTitle : meta.getTitle());
                     book.setAuthor(meta.getAuthor());
+                    book.setSeries(meta.getSeries());
+                    book.setSeriesNumber(meta.getSeriesNumber());
                     book.setAnnotation(meta.getAnnotation());
                     book.setFileSize(fileSize);
                     book.setFormat(format.name());
@@ -929,21 +1067,65 @@ public class MainActivity extends AppCompatActivity implements
         });
     }
 
-    private void autoScanConnectedFolders() {
+    private void autoScanConnectedFolders(boolean manualRescan) {
         executor.execute(() -> {
             List<FolderSourceItem> sources = repository.getAllFolderSources();
+            int totalAddedOrUpdated = 0;
             for (FolderSourceItem src : sources) {
                 try {
                     Uri treeUri = Uri.parse(src.getTreeUri());
                     DocumentFile rootDoc = DocumentFile.fromTreeUri(this, treeUri);
                     if (rootDoc != null && rootDoc.canRead()) {
                         repository.setFolderAccessible(src.getId(), true);
+                        List<DocumentFile> files = new ArrayList<>();
+                        collectFiles(rootDoc, files);
+                        int folderBookCount = 0;
+                        for (DocumentFile file : files) {
+                            try {
+                                Uri fileUri = file.getUri();
+                                folderBookCount++;
+                                if (!manualRescan && repository.getBookByUri(fileUri.toString()) != null) {
+                                    continue;
+                                }
+                                Fb2Metadata meta = BookParserManager.parseMetadata(this, fileUri);
+                                String fallbackTitle = file.getName() != null ? file.getName() : "book";
+                                long fileSize = file.length();
+                                BookFormat format = BookFormatDetector.detectFormat(this, fileUri);
+
+                                BookItem book = new BookItem();
+                                book.setUri(fileUri.toString());
+                                book.setTitle(meta.getTitle().equals("Без названия") ? fallbackTitle : meta.getTitle());
+                                book.setAuthor(meta.getAuthor());
+                                book.setSeries(meta.getSeries());
+                                book.setSeriesNumber(meta.getSeriesNumber());
+                                book.setAnnotation(meta.getAnnotation());
+                                book.setFileSize(fileSize);
+                                book.setFormat(format.name());
+
+                                if (meta.getCoverImageBytes() != null) {
+                                    String coverPath = FileUtils.saveCoverToCache(this, meta.getCoverImageBytes(), book.getTitle());
+                                    book.setCoverPath(coverPath);
+                                }
+                                repository.insertOrUpdateBook(book);
+                                totalAddedOrUpdated++;
+                            } catch (Exception ignored) {}
+                        }
+                        repository.updateFolderSourceCount(src.getId(), folderBookCount);
                     } else {
                         repository.setFolderAccessible(src.getId(), false);
                     }
                 } catch (Exception e) {
                     repository.setFolderAccessible(src.getId(), false);
                 }
+            }
+            final int updated = totalAddedOrUpdated;
+            if (updated > 0 || manualRescan) {
+                mainHandler.post(() -> {
+                    loadCurrentSectionData();
+                    if (manualRescan) {
+                        Toast.makeText(this, String.format(Locale.getDefault(), "Папки обновлены (книг обработано: %d)", updated), Toast.LENGTH_SHORT).show();
+                    }
+                });
             }
         });
     }
@@ -1007,13 +1189,20 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     public void onToggleFavorite(BookItem book) {
         repository.setFavorite(book.getId(), !book.isFavorite());
-        loadBooks();
+        loadCurrentSectionData();
     }
 
     @Override
     public void onDeleteBook(BookItem book) {
         repository.deleteBook(book.getId());
-        loadBooks();
+        loadCurrentSectionData();
+    }
+
+    @Override
+    public void onShelvesUpdated(BookItem book) {
+        if (currentSection == SECTION_SHELVES) {
+            loadShelves();
+        }
     }
 
     private String getBookCountNoun(int count) {
@@ -1028,6 +1217,308 @@ public class MainActivity extends AppCompatActivity implements
     private void openCustomizationScreen() {
         Intent intent = new Intent(this, CustomizationActivity.class);
         startActivity(intent);
+    }
+
+    // --- ONLINE BOOKS & MANGA SECTIONS ---
+
+    private void loadOnlineBooks() {
+        rvBooks.setAdapter(onlineBookAdapter);
+        bannerLoading.setVisibility(View.VISIBLE);
+        tvLoadingText.setText("Загрузка онлайн-каталога книг...");
+
+        int tab = OnlineBookClient.TAB_RUSSIAN;
+        if (currentSubTab == SUBTAB_RECENT) tab = OnlineBookClient.TAB_WORLD;
+        else if (currentSubTab == SUBTAB_FAVORITES) tab = OnlineBookClient.TAB_OPDS;
+
+        OnlineBookClient.getInstance().fetchBooks(this, tab, currentSearchQuery, activeOpdsUrl,
+                new OnlineBookClient.BooksCallback() {
+                    @Override
+                    public void onSuccess(List<OnlineBookItem> books, String sourceDescription) {
+                        bannerLoading.setVisibility(View.GONE);
+                        currentOnlineBooks = books;
+                        onlineBookAdapter.setItems(books);
+                        tvBookCount.setText(sourceDescription + " • Книг: " + books.size());
+                        updateEmptyState(books.isEmpty(), R.string.empty_online_title, R.string.empty_online_desc);
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        bannerLoading.setVisibility(View.GONE);
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                    }
+                });
+    }
+
+    private void openOrDownloadOnlineBook(final OnlineBookItem item, final boolean openImmediately, final int adapterPos) {
+        bannerLoading.setVisibility(View.VISIBLE);
+        tvLoadingText.setText(openImmediately ? "Открытие книги онлайн..." : "Скачивание книги в библиотеку...");
+
+        OnlineBookClient.getInstance().downloadOrOpenBook(this, item, !openImmediately,
+                new OnlineBookClient.DownloadCallback() {
+                    @Override
+                    public void onProgress(String status) {
+                        tvLoadingText.setText(status);
+                    }
+
+                    @Override
+                    public void onSuccess(BookItem localBook) {
+                        bannerLoading.setVisibility(View.GONE);
+                        if (adapterPos >= 0) {
+                            onlineBookAdapter.notifyItemChanged(adapterPos);
+                        } else {
+                            onlineBookAdapter.notifyDataSetChanged();
+                        }
+                        if (openImmediately) {
+                            onBookClick(localBook);
+                        } else {
+                            Toast.makeText(MainActivity.this,
+                                    "«" + localBook.getTitle() + "» сохранена в библиотеку (доступна офлайн)!",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        bannerLoading.setVisibility(View.GONE);
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    private void showOnlineBookDetailsDialog(final OnlineBookItem item, final int position) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.Theme_BookR_Dialog);
+        builder.setTitle(item.getTitle());
+        String msg = "Автор: " + item.getAuthor()
+                + "\nИсточник: " + item.getSourceName() + " (" + item.getFormat() + ", " + item.getLanguage() + ")"
+                + (item.getGenres().isEmpty() ? "" : "\nЖанры: " + item.getGenres())
+                + "\nСтатус: " + (item.isDownloaded() ? "Скачано в библиотеку (Офлайн ✓)" : "Доступно онлайн")
+                + "\n\n" + item.getDescription();
+        builder.setMessage(msg);
+        builder.setPositiveButton("Читать онлайн", (d, w) -> openOrDownloadOnlineBook(item, true, position));
+        builder.setNeutralButton(item.isDownloaded() ? "Открыть офлайн" : "Скачать в библиотеку",
+                (d, w) -> openOrDownloadOnlineBook(item, item.isDownloaded(), position));
+        builder.setNegativeButton("Закрыть", null);
+        builder.show();
+    }
+
+    private void showOpdsCatalogSelectorDialog() {
+        List<OpdsCatalogItem> catalogs = repository.getAllOpdsCatalogs();
+        String[] titles = new String[catalogs.size() + 1];
+        for (int i = 0; i < catalogs.size(); i++) {
+            OpdsCatalogItem c = catalogs.get(i);
+            titles[i] = (c.isBuiltIn() ? "🌐 " : "⭐ ") + c.getTitle() + "\n" + c.getUrl();
+        }
+        titles[catalogs.size()] = "➕ Добавить свой OPDS-каталог (например, Флибуста / CoolLib)...";
+
+        new AlertDialog.Builder(this, R.style.Theme_BookR_Dialog)
+                .setTitle("Выбор OPDS-каталога")
+                .setItems(titles, (d, which) -> {
+                    if (which == catalogs.size()) {
+                        showAddCustomOpdsDialog();
+                    } else {
+                        OpdsCatalogItem selected = catalogs.get(which);
+                        activeOpdsUrl = selected.getUrl();
+                        loadOnlineBooks();
+                    }
+                })
+                .show();
+    }
+
+    private void showAddCustomOpdsDialog() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (18 * getResources().getDisplayMetrics().density);
+        layout.setPadding(pad, pad, pad, pad);
+
+        final EditText etTitle = new EditText(this);
+        etTitle.setHint("Название каталога (напр. Моя библиотека)");
+        etTitle.setTextColor(getColor(R.color.white));
+        etTitle.setHintTextColor(getColor(R.color.text_muted));
+        layout.addView(etTitle);
+
+        final EditText etUrl = new EditText(this);
+        etUrl.setHint("URL OPDS (https://.../opds)");
+        etUrl.setTextColor(getColor(R.color.white));
+        etUrl.setHintTextColor(getColor(R.color.text_muted));
+        layout.addView(etUrl);
+
+        new AlertDialog.Builder(this, R.style.Theme_BookR_Dialog)
+                .setTitle("Добавить OPDS-каталог")
+                .setView(layout)
+                .setPositiveButton("Сохранить и открыть", (d, w) -> {
+                    String title = etTitle.getText().toString().trim();
+                    String url = etUrl.getText().toString().trim();
+                    if (!url.isEmpty()) {
+                        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                            url = "https://" + url;
+                        }
+                        OpdsCatalogItem item = new OpdsCatalogItem(
+                                title.isEmpty() ? "Пользовательский OPDS" : title,
+                                url,
+                                "Пользовательский каталог",
+                                false
+                        );
+                        repository.addOpdsCatalog(item);
+                        activeOpdsUrl = url;
+                        loadOnlineBooks();
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void openRandomOnlineBook() {
+        if (currentOnlineBooks != null && !currentOnlineBooks.isEmpty()) {
+            int idx = (int) (Math.random() * currentOnlineBooks.size());
+            showOnlineBookDetailsDialog(currentOnlineBooks.get(idx), idx);
+        } else {
+            List<OnlineBookItem> fallback = OnlineBookClient.getCuratedRussianBooks();
+            if (!fallback.isEmpty()) {
+                int idx = (int) (Math.random() * fallback.size());
+                showOnlineBookDetailsDialog(fallback.get(idx), -1);
+            }
+        }
+    }
+
+    private void loadMangaSection() {
+        if (currentSubTab == SUBTAB_FAVORITES) {
+            // Manga Bookmarks sub-tab
+            rvBooks.setAdapter(mangaBookmarkAdapter);
+            executor.execute(() -> {
+                List<MangaBookmarkItem> bms = repository.getAllMangaBookmarks(currentSearchQuery);
+                mainHandler.post(() -> {
+                    bannerLoading.setVisibility(View.GONE);
+                    mangaBookmarkAdapter.setItems(bms);
+                    tvBookCount.setText("Закладки манги: " + bms.size());
+                    updateEmptyState(bms.isEmpty(), R.string.bookmarks_title, R.string.empty_manga_desc);
+                });
+            });
+        } else if (currentSubTab == SUBTAB_RECENT) {
+            // Downloaded & Favorite offline manga sub-tab
+            rvBooks.setAdapter(mangaAdapter);
+            executor.execute(() -> {
+                List<MangaItem> downloaded = repository.getDownloadedOrFavoriteManga(true, false, currentSearchQuery);
+                List<MangaItem> favs = repository.getDownloadedOrFavoriteManga(false, true, currentSearchQuery);
+                for (MangaItem f : favs) {
+                    boolean exists = false;
+                    for (MangaItem d : downloaded) {
+                        if (d.getMangaId().equals(f.getMangaId())) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) downloaded.add(f);
+                }
+                mainHandler.post(() -> {
+                    bannerLoading.setVisibility(View.GONE);
+                    currentMangaList = downloaded;
+                    mangaAdapter.setItems(downloaded);
+                    tvBookCount.setText("Скачанная и избранная манга: " + downloaded.size());
+                    updateEmptyState(downloaded.isEmpty(), R.string.empty_manga_title, R.string.empty_manga_desc);
+                });
+            });
+        } else {
+            // Popular / Online Catalog sub-tab
+            rvBooks.setAdapter(mangaAdapter);
+            bannerLoading.setVisibility(View.VISIBLE);
+            tvLoadingText.setText("Загрузка каталога манги...");
+            MangaApiClient.getInstance().fetchCatalogManga(this, currentSearchQuery, new MangaApiClient.MangaListCallback() {
+                @Override
+                public void onSuccess(List<MangaItem> mangaList) {
+                    bannerLoading.setVisibility(View.GONE);
+                    currentMangaList = mangaList;
+                    mangaAdapter.setItems(mangaList);
+                    tvBookCount.setText("Каталог манги (Онлайн + Офлайн): " + mangaList.size());
+                    updateEmptyState(mangaList.isEmpty(), R.string.empty_manga_title, R.string.empty_manga_desc);
+                }
+
+                @Override
+                public void onError(String error) {
+                    bannerLoading.setVisibility(View.GONE);
+                    Toast.makeText(MainActivity.this, error, Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+    }
+
+    private void openMangaDetails(MangaItem manga) {
+        MangaDetailsBottomSheet sheet = MangaDetailsBottomSheet.newInstance(manga, () -> {
+            if (currentSection == SECTION_MANGA) {
+                loadMangaSection();
+            }
+        });
+        sheet.show(getSupportFragmentManager(), "manga_details");
+    }
+
+    private void showMangaQuickOptionsDialog(final MangaItem manga) {
+        String[] opts = new String[]{
+                "Открыть список глав",
+                manga.isFavorite() ? "Убрать из избранного" : "Добавить в избранное",
+                "Очистить кэш изображений (" + (NetworkImageLoader.getInstance(this).getCacheSizeBytes() / 1024) + " КБ)"
+        };
+        new AlertDialog.Builder(this, R.style.Theme_BookR_Dialog)
+                .setTitle(manga.getTitle())
+                .setItems(opts, (d, which) -> {
+                    if (which == 0) {
+                        openMangaDetails(manga);
+                    } else if (which == 1) {
+                        repository.saveOrUpdateManga(manga);
+                        repository.setMangaFavorite(manga.getMangaId(), !manga.isFavorite());
+                        loadMangaSection();
+                    } else if (which == 2) {
+                        NetworkImageLoader.getInstance(this).clearCache();
+                        Toast.makeText(this, "Кэш изображений очищен", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    private void openMangaBookmarkTarget(final MangaBookmarkItem bm) {
+        executor.execute(() -> {
+            MangaItem manga = repository.getMangaByExternalId(bm.getMangaId());
+            if (manga == null) {
+                manga = new MangaItem(bm.getMangaId(), bm.getMangaTitle(), "Мангака", "", bm.getCoverUrl(), "Выходит", "Манга");
+                repository.saveOrUpdateManga(manga);
+            }
+            List<MangaChapterItem> chapters = repository.getChaptersForManga(bm.getMangaId());
+            MangaChapterItem targetCh = repository.getChapterByExternalId(bm.getChapterId());
+            if (targetCh == null) {
+                targetCh = new MangaChapterItem(bm.getChapterId(), bm.getMangaId(), "1", "1", bm.getChapterTitle(), "RU", 12);
+                repository.saveOrUpdateChapter(targetCh);
+                chapters.add(targetCh);
+            }
+            int idx = 0;
+            for (int i = 0; i < chapters.size(); i++) {
+                if (chapters.get(i).getChapterId().equals(targetCh.getChapterId())) {
+                    idx = i;
+                    break;
+                }
+            }
+
+            final MangaItem finalManga = manga;
+            final MangaChapterItem finalCh = targetCh;
+            final ArrayList<MangaChapterItem> finalChapters = new ArrayList<>(chapters);
+            final int finalIdx = idx;
+
+            mainHandler.post(() -> {
+                Intent intent = new Intent(MainActivity.this, MangaReaderActivity.class);
+                intent.putExtra("manga", finalManga);
+                intent.putExtra("chapter", finalCh);
+                intent.putExtra("chapters_list", finalChapters);
+                intent.putExtra("chapter_index", finalIdx);
+                intent.putExtra("start_page", bm.getPageIndex());
+                startActivity(intent);
+            });
+        });
+    }
+
+    private void openRandomManga() {
+        List<MangaItem> pool = (currentMangaList != null && !currentMangaList.isEmpty())
+                ? currentMangaList : MangaApiClient.getCuratedMangaList();
+        if (!pool.isEmpty()) {
+            int idx = (int) (Math.random() * pool.size());
+            openMangaDetails(pool.get(idx));
+        }
     }
 
     @Override

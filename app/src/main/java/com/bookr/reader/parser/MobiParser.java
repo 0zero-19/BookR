@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 public class MobiParser {
     private static final String TAG = "BookR.MobiParser";
@@ -26,17 +27,19 @@ public class MobiParser {
 
         try (InputStream is = FileUtils.openInputStreamSafely(context, uri)) {
             if (is == null) return meta;
-            byte[] fileBytes = readFully(is, 16384);
+            byte[] fileBytes = readFully(is, 65536);
             if (fileBytes.length >= 78) {
                 String magic = new String(fileBytes, 60, 8, StandardCharsets.ISO_8859_1);
                 if ("BOOKMOBI".equals(magic)) {
                     int rec0Offset = readInt32(fileBytes, 78);
-                    if (rec0Offset + 84 <= fileBytes.length) {
+                    if (rec0Offset + 92 <= fileBytes.length) {
+                        int textEncoding = readInt32(fileBytes, rec0Offset + 28);
+                        Charset cs = resolveMobiCharset(textEncoding);
                         int titleOffsetInRec0 = readInt32(fileBytes, rec0Offset + 16 + 68);
                         int titleLen = readInt32(fileBytes, rec0Offset + 16 + 72);
                         int absTitleOffset = rec0Offset + titleOffsetInRec0;
                         if (absTitleOffset + titleLen <= fileBytes.length && titleLen > 0 && titleLen < 256) {
-                            String title = new String(fileBytes, absTitleOffset, titleLen, StandardCharsets.UTF_8);
+                            String title = new String(fileBytes, absTitleOffset, titleLen, cs);
                             meta.setTitle(title.trim());
                         }
                     }
@@ -73,7 +76,8 @@ public class MobiParser {
             int rec0 = recordOffsets[0];
             int compression = readInt16(fileBytes, rec0);
             int textRecordCount = readInt16(fileBytes, rec0 + 8);
-            int encryption = readInt16(fileBytes, rec0 + 16 + 12);
+            int encryption = readInt16(fileBytes, rec0 + 12);
+            int textEncoding = (rec0 + 32 <= fileBytes.length) ? readInt32(fileBytes, rec0 + 28) : 65001;
 
             if (encryption != 0) {
                 throw new Exception("Файл MOBI защищён DRM-шифрованием и не может быть прочитан без снятия защиты.");
@@ -100,7 +104,7 @@ public class MobiParser {
             }
 
             byte[] fullTextBytes = textBytes.toByteArray();
-            Charset cs = StandardCharsets.UTF_8;
+            Charset cs = resolveMobiCharset(textEncoding);
             String rawText = new String(fullTextBytes, cs);
 
             // Clean up text / HTML
@@ -121,8 +125,20 @@ public class MobiParser {
         return book;
     }
 
-    private static byte[] decompressPalmDoc(byte[] src, int offset, int length) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(length * 2);
+    private static Charset resolveMobiCharset(int textEncoding) {
+        try {
+            if (textEncoding == 1251) {
+                return Charset.forName("windows-1251");
+            } else if (textEncoding == 1252) {
+                return Charset.forName("windows-1252");
+            }
+        } catch (Exception ignored) {}
+        return StandardCharsets.UTF_8;
+    }
+
+    public static byte[] decompressPalmDoc(byte[] src, int offset, int length) {
+        byte[] outBuf = new byte[Math.max(4096, length * 3)];
+        int outPos = 0;
         int i = offset;
         int end = offset + length;
 
@@ -132,38 +148,44 @@ public class MobiParser {
             if (b >= 1 && b <= 8) {
                 // Next b bytes are literal
                 while (b > 0 && i < end) {
-                    out.write(src[i++]);
+                    if (outPos >= outBuf.length) {
+                        outBuf = Arrays.copyOf(outBuf, outBuf.length * 2);
+                    }
+                    outBuf[outPos++] = src[i++];
                     b--;
                 }
             } else if (b <= 0x7F) {
                 // Literal byte
-                out.write(b);
+                if (outPos >= outBuf.length) {
+                    outBuf = Arrays.copyOf(outBuf, outBuf.length * 2);
+                }
+                outBuf[outPos++] = (byte) b;
             } else if (b >= 0xC0) {
                 // Space + (b ^ 0x80)
-                out.write(' ');
-                out.write(b ^ 0x80);
+                if (outPos + 2 > outBuf.length) {
+                    outBuf = Arrays.copyOf(outBuf, outBuf.length * 2);
+                }
+                outBuf[outPos++] = (byte) ' ';
+                outBuf[outPos++] = (byte) (b ^ 0x80);
             } else {
                 // Distance / length pair (0x80 to 0xBF)
                 if (i >= end) break;
                 int b2 = src[i++] & 0xFF;
-                int distance = ((b & 0x3F) << 3) | (b2 >> 5);
-                int count = (b2 & 0x1F) + 3;
+                int distance = ((b & 0x3F) << 5) | (b2 >> 3);
+                int count = (b2 & 0x07) + 3;
 
-                byte[] current = out.toByteArray();
-                int srcPos = current.length - distance;
-                if (srcPos >= 0) {
+                int srcPos = outPos - distance;
+                if (srcPos >= 0 && distance > 0) {
+                    if (outPos + count > outBuf.length) {
+                        outBuf = Arrays.copyOf(outBuf, Math.max(outBuf.length * 2, outPos + count));
+                    }
                     for (int k = 0; k < count; k++) {
-                        if (srcPos + k < current.length) {
-                            out.write(current[srcPos + k]);
-                        } else {
-                            // Run-length overflow: repeat written character
-                            out.write(current[srcPos]);
-                        }
+                        outBuf[outPos++] = outBuf[srcPos + k];
                     }
                 }
             }
         }
-        return out.toByteArray();
+        return Arrays.copyOf(outBuf, outPos);
     }
 
     private static int readInt16(byte[] data, int offset) {

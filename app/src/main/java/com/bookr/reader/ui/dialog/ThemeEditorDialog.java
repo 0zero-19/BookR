@@ -88,21 +88,19 @@ public class ThemeEditorDialog extends BottomSheetDialogFragment {
         presetOled.setOnClickListener(v -> applyPreset(ReaderSettings.THEME_OLED_BLACK, "#000000", "#D0D0D0"));
         presetPaper.setOnClickListener(v -> applyPreset(ReaderSettings.THEME_PAPER, "#F4F4F4", "#1A1A1A"));
 
-        btnPickBg.setOnClickListener(v -> showColorPickerDialog("Выберите цвет фона", new String[]{
-                "#000000", "#0A0A0A", "#121212", "#181818", "#202020", "#242220", "#F4F4F4", "#E8E4DF"
-        }, color -> {
-            currentBg = color;
-            selectedPreset = ReaderSettings.THEME_CUSTOM;
-            updatePreview();
-        }));
+        btnPickBg.setOnClickListener(v -> ColorPickerDialog.newInstance(
+                "Выберите цвет фона", currentBg, "#0A0A0A", color -> {
+                    currentBg = color;
+                    selectedPreset = ReaderSettings.THEME_CUSTOM;
+                    updatePreview();
+                }).show(getParentFragmentManager(), "pick_bg"));
 
-        btnPickText.setOnClickListener(v -> showColorPickerDialog("Выберите цвет текста", new String[]{
-                "#FFFFFF", "#E6E6E6", "#D5D5D5", "#C0C0C0", "#DCD6CD", "#8E8E93", "#222222", "#000000"
-        }, color -> {
-            currentText = color;
-            selectedPreset = ReaderSettings.THEME_CUSTOM;
-            updatePreview();
-        }));
+        btnPickText.setOnClickListener(v -> ColorPickerDialog.newInstance(
+                "Выберите цвет текста", currentText, "#E6E6E6", color -> {
+                    currentText = color;
+                    selectedPreset = ReaderSettings.THEME_CUSTOM;
+                    updatePreview();
+                }).show(getParentFragmentManager(), "pick_text"));
 
         btnResetTheme.setOnClickListener(v -> {
             applyPreset(ReaderSettings.THEME_OBSIDIAN, "#0A0A0A", "#E6E6E6");
@@ -110,9 +108,9 @@ public class ThemeEditorDialog extends BottomSheetDialogFragment {
         });
 
         view.findViewById(R.id.btnSaveTheme).setOnClickListener(v -> {
-            settings.setThemeScheme(selectedPreset);
             settings.setCustomBgColor(currentBg);
             settings.setCustomTextColor(currentText);
+            settings.setThemeScheme(selectedPreset);
             settings.save(context);
 
             String name = etCustomThemeName.getText().toString().trim();

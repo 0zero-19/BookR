@@ -97,9 +97,9 @@ public class Fb2Book implements Serializable {
         sb.append("</div><div class=\"book-divider\"></div>");
 
         // Sections / Chapters
-        int chapterIdx = 0;
+        int[] chapterIdx = new int[]{0};
         for (Fb2Section sec : sections) {
-            renderSection(sb, sec, chapterIdx++);
+            renderSection(sb, sec, chapterIdx);
         }
 
         if (!settings.isPagedMode()) {
@@ -118,8 +118,11 @@ public class Fb2Book implements Serializable {
         return sb.toString();
     }
 
-    private void renderSection(StringBuilder sb, Fb2Section sec, int chapterIdx) {
-        String anchorId = "chapter_" + chapterIdx;
+    private void renderSection(StringBuilder sb, Fb2Section sec, int[] chapterIdx) {
+        int currentIdx = chapterIdx[0]++;
+        String anchorId = (sec.getAnchorId() != null && !sec.getAnchorId().isEmpty())
+                ? sec.getAnchorId()
+                : ("chapter_" + currentIdx);
         sb.append("<section id=\"").append(anchorId).append("\" class=\"book-section level-").append(sec.getLevel()).append("\">");
 
         if (sec.getTitle() != null && !sec.getTitle().trim().isEmpty()) {
@@ -138,7 +141,7 @@ public class Fb2Book implements Serializable {
         sb.append(sec.getContent());
 
         for (Fb2Section sub : sec.getSubSections()) {
-            renderSection(sb, sub, ++chapterIdx);
+            renderSection(sb, sub, chapterIdx);
         }
 
         sb.append("</section>");
@@ -437,14 +440,31 @@ public class Fb2Book implements Serializable {
           .append("}\n")
           .append("\n")
           .append("function updateStyle(newCss) {\n")
-          .append("    var prevPct = totalPages > 1 ? currentPage / (totalPages - 1) : 0;\n")
+          .append("    var prevPct = 0;\n")
+          .append("    if (totalPages > 1 && currentPage > 0) {\n")
+          .append("        prevPct = currentPage / (totalPages - 1);\n")
+          .append("    } else {\n")
+          .append("        var maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);\n")
+          .append("        var cur = window.scrollY || window.pageYOffset || 0;\n")
+          .append("        prevPct = Math.min(1, Math.max(0, cur / maxScroll));\n")
+          .append("    }\n")
           .append("    var styleEl = document.getElementById('bookr-style');\n")
           .append("    if (styleEl) styleEl.innerHTML = newCss;\n")
           .append("    setTimeout(function() {\n")
-          .append("        totalPages = calculateTotalPages();\n")
+          .append("        var wrapper = document.getElementById('book-wrapper');\n")
           .append("        if (isPaged) {\n")
+          .append("            window.scrollTo({ top: 0, behavior: 'auto' });\n")
+          .append("            totalPages = calculateTotalPages();\n")
           .append("            var newP = Math.min(totalPages - 1, Math.max(0, Math.round(prevPct * (totalPages - 1))));\n")
           .append("            goToPage(newP, false);\n")
+          .append("        } else {\n")
+          .append("            if (wrapper) wrapper.scrollLeft = 0;\n")
+          .append("            var maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);\n")
+          .append("            var targetY = Math.round(prevPct * maxScroll);\n")
+          .append("            window.scrollTo({ top: targetY, behavior: 'auto' });\n")
+          .append("            if (window.BookRBridge) {\n")
+          .append("                window.BookRBridge.onScrollPosition(targetY, prevPct * 100);\n")
+          .append("            }\n")
           .append("        }\n")
           .append("    }, 150);\n")
           .append("}\n")

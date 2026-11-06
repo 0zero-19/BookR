@@ -112,6 +112,9 @@ public class ThemeBackgroundView extends View {
             Bitmap finalBmp = raw;
             if (raw != null && blur > 0) {
                 finalBmp = ImageHelper.fastBlur(raw, blur);
+                if (finalBmp != null && finalBmp != raw && !raw.isRecycled()) {
+                    raw.recycle();
+                }
             }
 
             final Bitmap res = finalBmp;
@@ -198,7 +201,8 @@ public class ThemeBackgroundView extends View {
         String tintHex = isReaderScreen ? currentConfig.getReaderBgTintColor() : currentConfig.getAppBgTintColor();
 
         // 2. Render static image
-        if (bgType == ThemeConfig.BG_PHOTO && processedBitmap != null && !processedBitmap.isRecycled()) {
+        if ((bgType == ThemeConfig.BG_PHOTO || (bgType == ThemeConfig.BG_GIF && movie == null))
+                && processedBitmap != null && !processedBitmap.isRecycled()) {
             int bw = processedBitmap.getWidth();
             int bh = processedBitmap.getHeight();
             srcRect.set(0, 0, bw, bh);

@@ -349,6 +349,11 @@ public class ReaderSettings {
 
     public void setCustomBgColor(String customBgColor) {
         this.customBgColor = customBgColor;
+        if (this.activeTheme != null && this.themeScheme == THEME_CUSTOM && customBgColor != null) {
+            this.activeTheme.setReaderBgColor(customBgColor);
+            this.activeTheme.setAppBgColor(customBgColor);
+            this.activeTheme.setUnderlayColor(customBgColor);
+        }
     }
 
     public String getCustomTextColor() {
@@ -357,6 +362,10 @@ public class ReaderSettings {
 
     public void setCustomTextColor(String customTextColor) {
         this.customTextColor = customTextColor;
+        if (this.activeTheme != null && this.themeScheme == THEME_CUSTOM && customTextColor != null) {
+            this.activeTheme.setReaderTextColor(customTextColor);
+            this.activeTheme.setTextColor(customTextColor);
+        }
     }
 
     public String getCustomSurfaceColor() {
@@ -365,6 +374,9 @@ public class ReaderSettings {
 
     public void setCustomSurfaceColor(String customSurfaceColor) {
         this.customSurfaceColor = customSurfaceColor;
+        if (this.activeTheme != null && this.themeScheme == THEME_CUSTOM && customSurfaceColor != null) {
+            this.activeTheme.setCardBgColor(customSurfaceColor);
+        }
     }
 
     public String getCssFontFamily() {

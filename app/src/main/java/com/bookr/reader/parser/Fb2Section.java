@@ -6,6 +6,7 @@ import java.util.List;
 
 public class Fb2Section implements Serializable {
     private String id;
+    private String anchorId;
     private String title = "";
     private String epigraph = "";
     private String epigraphAuthor = "";
@@ -19,6 +20,14 @@ public class Fb2Section implements Serializable {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String getAnchorId() {
+        return anchorId;
+    }
+
+    public void setAnchorId(String anchorId) {
+        this.anchorId = anchorId;
     }
 
     public String getTitle() {

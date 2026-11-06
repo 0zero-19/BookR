@@ -41,6 +41,7 @@
     <string name="btn_cancel">Отмена</string>
     <string name="btn_delete">Удалить</string>
     <string name="btn_close">Закрыть</string>
+    <string name="btn_save">Сохранить</string>
 
     <!-- Reader -->
     <string name="toc_title">Оглавление</string>
@@ -120,6 +121,8 @@
     <!-- Shelves / Collections -->
     <string name="shelves_title">Коллекции и полки</string>
     <string name="btn_new_shelf">Создать полку</string>
+    <string name="create_shelf">Создать полку</string>
+    <string name="shelf_name_hint">Название полки (например, Фантастика)</string>
     <string name="empty_shelves_title">Коллекций пока нет</string>
     <string name="empty_shelves_desc">Создавайте полки для сортировки книг по жанрам, сериям или темам</string>
     <string name="add_to_shelf">Добавить в коллекцию</string>
@@ -172,4 +175,31 @@
     <string name="orientation_portrait">Портретная</string>
     <string name="orientation_landscape">Альбомная</string>
     <string name="setting_auto_scan">Авто-сканирование при запуске</string>
+
+    <!-- Online Books & Manga -->
+    <string name="nav_online_books">Онлайн книги</string>
+    <string name="nav_manga">Манга</string>
+    <string name="tab_online_ru">Классика и RU</string>
+    <string name="tab_online_world">Мировой каталог</string>
+    <string name="tab_online_opds">OPDS Каталоги</string>
+    <string name="tab_manga_popular">Онлайн каталог</string>
+    <string name="tab_manga_downloaded">Скачанная</string>
+    <string name="tab_manga_bookmarks">Закладки манги</string>
+    <string name="btn_read_online">Читать онлайн</string>
+    <string name="btn_download_book">Скачать в библиотеку</string>
+    <string name="btn_downloaded">В библиотеке (Офлайн)</string>
+    <string name="btn_add_opds">+ OPDS Каталог</string>
+    <string name="btn_random_book">Случайная книга</string>
+    <string name="btn_random_manga">Случайная манга</string>
+    <string name="manga_mode_webtoon">Вебтун (Вертикально)</string>
+    <string name="manga_mode_ltr">Слева направо (LTR)</string>
+    <string name="manga_mode_rtl">Справа налево (Манга RTL)</string>
+    <string name="manga_data_saver">Экономия трафика (Data Saver)</string>
+    <string name="manga_download_chapter">Скачать главу</string>
+    <string name="manga_download_all">Скачать все главы</string>
+    <string name="manga_bookmark_page">Закладка на страницу</string>
+    <string name="empty_online_title">Загрузка онлайн-каталога...</string>
+    <string name="empty_online_desc">Используйте поиск сверху или выберите категорию для просмотра бесплатных книг</string>
+    <string name="empty_manga_title">Раздел манги</string>
+    <string name="empty_manga_desc">Читайте мангу онлайн или скачивайте главы для чтения без интернета</string>
 </resources>

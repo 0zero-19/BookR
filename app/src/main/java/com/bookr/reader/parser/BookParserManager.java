@@ -2,6 +2,7 @@ package com.bookr.reader.parser;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
@@ -92,6 +93,7 @@ public class BookParserManager {
                     int w = Math.min(600, page.getWidth());
                     int h = (int) (w * ((float) page.getHeight() / page.getWidth()));
                     Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                    bmp.eraseColor(Color.WHITE);
                     page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
                     page.close();
 

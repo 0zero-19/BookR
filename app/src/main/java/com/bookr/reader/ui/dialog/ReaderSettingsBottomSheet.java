@@ -33,8 +33,9 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
     private TextView spacingCompact, spacingNormal, spacingRelaxed;
     private TextView marginNarrow, marginNormal, marginWide;
     private FrameLayout alignJustify, alignLeft, alignCenter;
-    private TextView themeOled, themeCharcoal, themeSlate, themePaper;
+    private TextView themeObsidian, themeOled, themeCharcoal, themeSlate, themePaper;
     private TextView modePaged, modeScroll;
+    private TextView orientAuto, orientPortrait, orientLandscape;
     private SeekBar seekBrightness;
     private TextView timerOff, timer15, timer30, timer60;
     private TextView btnToggleVolume, btnToggleFullscreen;
@@ -42,6 +43,10 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
 
     public static ReaderSettingsBottomSheet newInstance() {
         return new ReaderSettingsBottomSheet();
+    }
+
+    public void setSelectedSleepMinutes(int minutes) {
+        this.selectedSleepMinutes = minutes;
     }
 
     public void setListener(OnSettingsChangeListener listener) {
@@ -75,12 +80,16 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
         alignJustify = view.findViewById(R.id.alignJustify);
         alignLeft = view.findViewById(R.id.alignLeft);
         alignCenter = view.findViewById(R.id.alignCenter);
+        themeObsidian = view.findViewById(R.id.themeObsidian);
         themeOled = view.findViewById(R.id.themeOled);
         themeCharcoal = view.findViewById(R.id.themeCharcoal);
         themeSlate = view.findViewById(R.id.themeSlate);
         themePaper = view.findViewById(R.id.themePaper);
         modePaged = view.findViewById(R.id.modePaged);
         modeScroll = view.findViewById(R.id.modeScroll);
+        orientAuto = view.findViewById(R.id.orientAuto);
+        orientPortrait = view.findViewById(R.id.orientPortrait);
+        orientLandscape = view.findViewById(R.id.orientLandscape);
         timerOff = view.findViewById(R.id.timerOff);
         timer15 = view.findViewById(R.id.timer15);
         timer30 = view.findViewById(R.id.timer30);
@@ -167,6 +176,9 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
         alignCenter.setOnClickListener(v -> selectAlignment(ReaderSettings.ALIGN_CENTER));
 
         // Themes
+        if (themeObsidian != null) {
+            themeObsidian.setOnClickListener(v -> selectTheme(ReaderSettings.THEME_OBSIDIAN));
+        }
         themeOled.setOnClickListener(v -> selectTheme(ReaderSettings.THEME_OLED));
         themeCharcoal.setOnClickListener(v -> selectTheme(ReaderSettings.THEME_CHARCOAL));
         themeSlate.setOnClickListener(v -> selectTheme(ReaderSettings.THEME_SLATE));
@@ -175,6 +187,13 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
         // Mode
         modePaged.setOnClickListener(v -> selectMode(true));
         modeScroll.setOnClickListener(v -> selectMode(false));
+
+        // Orientation
+        if (orientAuto != null) {
+            orientAuto.setOnClickListener(v -> selectOrientation(ReaderSettings.ORIENTATION_AUTO));
+            orientPortrait.setOnClickListener(v -> selectOrientation(ReaderSettings.ORIENTATION_PORTRAIT));
+            orientLandscape.setOnClickListener(v -> selectOrientation(ReaderSettings.ORIENTATION_LANDSCAPE));
+        }
 
         updateUiState();
     }
@@ -227,6 +246,13 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
         notifySettingsChanged();
     }
 
+    private void selectOrientation(int orientation) {
+        settings.setOrientationMode(orientation);
+        settings.save(requireContext());
+        updateUiState();
+        notifySettingsChanged();
+    }
+
     private void updateUiState() {
         Context context = getContext();
         if (context == null) return;
@@ -252,6 +278,9 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
         setFramePillState(alignCenter, settings.getAlignment() == ReaderSettings.ALIGN_CENTER);
 
         // Themes
+        if (themeObsidian != null) {
+            setPillState(themeObsidian, settings.getThemeScheme() == ReaderSettings.THEME_OBSIDIAN);
+        }
         setPillState(themeOled, settings.getThemeScheme() == ReaderSettings.THEME_OLED);
         setPillState(themeCharcoal, settings.getThemeScheme() == ReaderSettings.THEME_CHARCOAL);
         setPillState(themeSlate, settings.getThemeScheme() == ReaderSettings.THEME_SLATE);
@@ -260,6 +289,13 @@ public class ReaderSettingsBottomSheet extends BottomSheetDialogFragment {
         // Mode
         setPillState(modePaged, settings.isPagedMode());
         setPillState(modeScroll, !settings.isPagedMode());
+
+        // Orientation
+        if (orientAuto != null) {
+            setPillState(orientAuto, settings.getOrientationMode() == ReaderSettings.ORIENTATION_AUTO);
+            setPillState(orientPortrait, settings.getOrientationMode() == ReaderSettings.ORIENTATION_PORTRAIT);
+            setPillState(orientLandscape, settings.getOrientationMode() == ReaderSettings.ORIENTATION_LANDSCAPE);
+        }
 
         // Sleep Timer
         if (timerOff != null) {

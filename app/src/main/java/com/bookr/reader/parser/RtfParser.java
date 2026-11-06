@@ -56,7 +56,7 @@ public class RtfParser {
         return book;
     }
 
-    private static String parseRtfToHtml(byte[] bytes, Charset defaultCharset) {
+    public static String parseRtfToHtml(byte[] bytes, Charset defaultCharset) {
         StringBuilder out = new StringBuilder(bytes.length / 2);
         out.append("<p>");
 
@@ -66,6 +66,9 @@ public class RtfParser {
         int skipGroupDepth = -1;
         boolean bold = false;
         boolean italic = false;
+        int ucSkip = 1;
+        int skipCharsAfterUnicode = 0;
+        Stack<Integer> ucSkipStack = new Stack<>();
 
         ByteArrayOutputStream hexByteCollector = new ByteArrayOutputStream();
 
@@ -75,12 +78,18 @@ public class RtfParser {
 
             if (c == '{') {
                 flushHex(hexByteCollector, out, defaultCharset);
+                skipCharsAfterUnicode = 0;
+                ucSkipStack.push(ucSkip);
                 groupDepth++;
                 i++;
             } else if (c == '}') {
                 flushHex(hexByteCollector, out, defaultCharset);
+                skipCharsAfterUnicode = 0;
                 if (skipGroupDepth == groupDepth) {
                     skipGroupDepth = -1;
+                }
+                if (!ucSkipStack.isEmpty()) {
+                    ucSkip = ucSkipStack.pop();
                 }
                 groupDepth--;
                 i++;
@@ -93,8 +102,17 @@ public class RtfParser {
                 if (i >= len) break;
                 char nextChar = (char) (bytes[i] & 0xFF);
 
-                if (nextChar == '\\' || nextChar == '{' || nextChar == '}') {
-                    out.append(nextChar);
+                if (nextChar == '*') {
+                    // Ignorable destination group {\*\...}
+                    skipGroupDepth = groupDepth;
+                    skipCharsAfterUnicode = 0;
+                    i++;
+                } else if (nextChar == '\\' || nextChar == '{' || nextChar == '}') {
+                    if (skipCharsAfterUnicode > 0) {
+                        skipCharsAfterUnicode--;
+                    } else {
+                        out.append(nextChar);
+                    }
                     i++;
                 } else if (nextChar == '\'') {
                     // Hex byte \'XX
@@ -103,11 +121,16 @@ public class RtfParser {
                         int h1 = Character.digit((char) (bytes[i] & 0xFF), 16);
                         int h2 = Character.digit((char) (bytes[i + 1] & 0xFF), 16);
                         if (h1 != -1 && h2 != -1) {
-                            hexByteCollector.write((h1 << 4) | h2);
+                            if (skipCharsAfterUnicode > 0) {
+                                skipCharsAfterUnicode--;
+                            } else {
+                                hexByteCollector.write((h1 << 4) | h2);
+                            }
                             i += 2;
                         }
                     }
                 } else {
+                    skipCharsAfterUnicode = 0;
                     // Control word
                     StringBuilder word = new StringBuilder();
                     while (i < len && Character.isLetter((char) (bytes[i] & 0xFF))) {
@@ -133,6 +156,10 @@ public class RtfParser {
                     } else if (cw.equals("ansicpg")) {
                         try {
                             defaultCharset = Charset.forName("windows-" + param);
+                        } catch (Exception ignored) {}
+                    } else if (cw.equals("uc") && param.length() > 0) {
+                        try {
+                            ucSkip = Math.max(0, Integer.parseInt(param.toString()));
                         } catch (Exception ignored) {}
                     } else if (cw.equals("par")) {
                         if (bold) out.append("</strong>");
@@ -164,7 +191,12 @@ public class RtfParser {
                         try {
                             int code = Integer.parseInt(param.toString());
                             if (code < 0) code += 65536;
-                            out.append((char) code);
+                            char ch = (char) code;
+                            if (ch == '<') out.append("&lt;");
+                            else if (ch == '>') out.append("&gt;");
+                            else if (ch == '&') out.append("&amp;");
+                            else out.append(ch);
+                            skipCharsAfterUnicode = ucSkip;
                         } catch (Exception ignored) {}
                     }
                 }
@@ -172,10 +204,14 @@ public class RtfParser {
                 i++;
             } else {
                 flushHex(hexByteCollector, out, defaultCharset);
-                if (c == '<') out.append("&lt;");
-                else if (c == '>') out.append("&gt;");
-                else if (c == '&') out.append("&amp;");
-                else out.append(c);
+                if (skipCharsAfterUnicode > 0) {
+                    skipCharsAfterUnicode--;
+                } else {
+                    if (c == '<') out.append("&lt;");
+                    else if (c == '>') out.append("&gt;");
+                    else if (c == '&') out.append("&amp;");
+                    else out.append(c);
+                }
                 i++;
             }
         }

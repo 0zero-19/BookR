@@ -112,6 +112,7 @@ public class PdfPageAdapter extends RecyclerView.Adapter<PdfPageAdapter.PageView
             int targetHeight = (int) (targetWidth * ((float) page.getHeight() / page.getWidth()));
 
             Bitmap bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888);
+            bitmap.eraseColor(Color.WHITE);
             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
             page.close();
             return bitmap;
@@ -126,8 +127,8 @@ public class PdfPageAdapter extends RecyclerView.Adapter<PdfPageAdapter.PageView
         return pageCount;
     }
 
-    public void release() {
-        executor.shutdown();
+    public synchronized void release() {
+        executor.shutdownNow();
         memoryCache.evictAll();
         if (pdfRenderer != null) {
             try {
